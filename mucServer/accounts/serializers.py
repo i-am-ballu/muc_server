@@ -10,3 +10,7 @@ class MucSuperAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = MucSuperAdmin
         fields = ['suparadmin_id', 'first_name', 'last_name', 'email', 'password', 'address', 'mobile_number', 'created', 'modified']
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
