@@ -14,3 +14,13 @@ class MucSuperAdminSerializer(serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
+
+class UserRoleSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    superadmin_id = serializers.IntegerField(required=False)
+    admin_id = serializers.IntegerField(required=False)
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    email = serializers.CharField()
+    isSuperadmin = serializers.BooleanField()
+    token = serializers.CharField()
