@@ -23,7 +23,7 @@ class MucUserRegisterView(generics.CreateAPIView):
     serializer_class = MucUserSerializer
 
 class MucUserLoginView(APIView):
-    def get(self, request):
+    def post(self, request):
         try:
             email = request.data.get('email')
             password = request.data.get('password')
@@ -61,7 +61,7 @@ class MucUserLoginView(APIView):
                     }
                     return Response(data, status=status.HTTP_200_OK)
                 else:
-                    return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
+                    return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
 
             # Check if email exists in the MucUser table
             elif MucUser.objects.filter(email=email).exists():
@@ -90,11 +90,11 @@ class MucUserLoginView(APIView):
                     }
                     return Response(data, status=status.HTTP_200_OK)
                 else:
-                    return Response({'error': 'Invalid email or password'}, status=status.HTTP_401_UNAUTHORIZED)
+                    return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
 
             # If email is not found in either table
             else:
-                return Response({'error': 'Email not found'}, status=status.HTTP_404_NOT_FOUND)
+                return Response({'error': 'Invalid email or password'}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
             return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
