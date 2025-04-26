@@ -37,8 +37,16 @@ class MucUserLoginView(APIView):
             # Check if email exists in the SuperAdmin table
             if MucSuperAdmin.objects.filter(email=email).exists():
                 superadmin = MucSuperAdmin.objects.get(email=email)
-                user, created = User.objects.get_or_create(username=email, defaults={'email': email})
-                token, _ = Token.objects.get_or_create(user=superadmin)
+                # Fetch or create the actual User object
+                user, created = User.objects.get_or_create(
+                    email=superadmin.email,
+                    defaults={
+                        'username': superadmin.email,
+                        'first_name': superadmin.first_name or '',
+                        'last_name': superadmin.last_name or '',
+                    }
+                )
+                token, _ = Token.objects.get_or_create(user=user)
 
                 # Check if password is correct
                 if bcrypt.checkpw(password.encode('utf-8'), superadmin.password.encode('utf-8')):
@@ -58,8 +66,16 @@ class MucUserLoginView(APIView):
             # Check if email exists in the MucUser table
             elif MucUser.objects.filter(email=email).exists():
                 muc_user = MucUser.objects.get(email=email)
-                user, created = User.objects.get_or_create(username=email, defaults={'email': email})
-                token, _ = Token.objects.get_or_create(user=muc_user)
+                # Fetch or create the actual User object
+                user, created = User.objects.get_or_create(
+                    email=muc_user.email,
+                    defaults={
+                        'username': muc_user.email,
+                        'first_name': muc_user.first_name or '',
+                        'last_name': muc_user.last_name or '',
+                    }
+                )
+                token, _ = Token.objects.get_or_create(user=user)
 
                 # Check if password is correct
                 if bcrypt.checkpw(password.encode('utf-8'), muc_user.password.encode('utf-8')):
