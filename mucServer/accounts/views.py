@@ -52,7 +52,7 @@ class MucUserLoginView(APIView):
                 if bcrypt.checkpw(password.encode('utf-8'), superadmin.password.encode('utf-8')):
                     data = {
                         'message': 'Login successful',
-                        'superadmin_id': superadmin.suparadmin_id,
+                        'superadmin_id': superadmin.superadmin_id,
                         'first_name': superadmin.first_name,
                         'last_name': superadmin.last_name,
                         'email': superadmin.email,
@@ -107,7 +107,7 @@ class MucSuperAdminRegisterView(APIView):
             try:
                 superadmin = MucSuperAdmin.objects.get(suparadmin_id=pk)
                 data = {
-                    'suparadmin_id': superadmin.suparadmin_id,
+                    'superadmin_id': superadmin.superadmin_id,
                     'first_name': superadmin.first_name,
                     'last_name': superadmin.last_name,
                     'email': superadmin.email,
@@ -146,7 +146,7 @@ class MucSuperAdminRegisterView(APIView):
         if bcrypt.checkpw(password.encode('utf-8'), superadmin.password.encode('utf-8')):
             return Response({
                 'message': 'Login successful',
-                'superadmin_id': superadmin.suparadmin_id,
+                'superadmin_id': superadmin.superadmin_id,
                 'first_name': superadmin.first_name,
                 'last_name': superadmin.last_name,
                 'email': superadmin.email
