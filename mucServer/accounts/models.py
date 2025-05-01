@@ -19,6 +19,7 @@ class MucSuperAdmin(models.Model):
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
 
+
 class MucUser(models.Model):
     user_id = models.AutoField(primary_key=True)
     company_id = models.IntegerField(default=0)
