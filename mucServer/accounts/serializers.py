@@ -4,7 +4,7 @@ from .models import MucUser, MucSuperAdmin
 class MucUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = MucUser
-        fields = ['user_id', 'company_id', 'superadmin', 'first_name', 'last_name', 'full_name', 'email', 'password', 'address', 'mobile_number', 'created_on', 'modified_on']
+        fields = ['user_id', 'company_id', 'superadmin_id', 'first_name', 'last_name', 'full_name', 'email', 'password', 'address', 'mobile_number', 'created_on', 'modified_on']
 
 class MucSuperAdminSerializer(serializers.ModelSerializer):
     class Meta:

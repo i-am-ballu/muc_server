@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.RenameField(
             model_name='mucsuperadmin',
             old_name='row_id',
-            new_name='suparadmin_id',
+            new_name='superadmin_id',
         ),
         migrations.AlterField(
             model_name='mucsuperadmin',

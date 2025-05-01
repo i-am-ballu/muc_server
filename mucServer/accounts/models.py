@@ -14,7 +14,7 @@ class MucSuperAdmin(models.Model):
     modified = models.BigIntegerField(default=0)
     class Meta:
         db_table = 'superadmin'  # Specify the table name in the database
-        managed = True
+        managed = False
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
@@ -41,4 +41,4 @@ class MucUser(models.Model):
 
     class Meta:
         db_table = 'muc_user'
-        managed = True
+        managed = False
