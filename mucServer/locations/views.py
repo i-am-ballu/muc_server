@@ -9,7 +9,13 @@ import json
 # Get countries
 def get_countries(request):
     res = requests.get("https://countriesnow.space/api/v0.1/countries/positions")
+    # headers = {
+    #   'X-CSCAPI-KEY': 'API_KEY'
+    # }
+    # res = requests.get("https://api.countrystatecity.in/v1/countries", headers=headers)
+    # print(res.text)
     if res.status_code == 200:
+        # print(res.text)
         data = res.json()
         countries = [c['name'] for c in data['data']]
         return JsonResponse({'countries': countries})

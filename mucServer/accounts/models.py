@@ -37,9 +37,12 @@ class MucUser(models.Model):
     password = models.CharField(max_length=255)
     address = models.CharField(max_length=250, null=True, blank=True)
     mobile_number = models.CharField(max_length=15, null=True, blank=True)
+    country = models.CharField(max_length=150)
+    state = models.CharField(max_length=150)
+    city = models.CharField(max_length=150)
     created_on = models.BigIntegerField(default=0)
     modified_on = models.BigIntegerField(default=0)
 
     class Meta:
         db_table = 'muc_user'
-        managed = False
+        managed = True
