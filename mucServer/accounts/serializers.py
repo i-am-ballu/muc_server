@@ -1,10 +1,5 @@
 from rest_framework import serializers
-from .models import MucUser, MucSuperAdmin
-
-class MucUserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MucUser
-        fields = ['user_id', 'company_id', 'superadmin_id', 'first_name', 'last_name', 'full_name', 'email', 'password', 'address', 'mobile_number', 'country', 'state', 'city', 'created_on', 'modified_on']
+from .models import MucSuperAdmin
 
 class MucSuperAdminSerializer(serializers.ModelSerializer):
     class Meta:

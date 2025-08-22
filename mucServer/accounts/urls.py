@@ -1,17 +1,13 @@
 from django.urls import path
 from .views import (
-    MucUserRegisterView,
-    MucUserLoginView,
     MucSuperAdminRegisterView,
     SuperAdminChangePasswordView,
     MySQLHealthCheck
 )
 
 urlpatterns = [
-    path('register/user/', MucUserRegisterView.as_view()),
     path('register/superadmin/', MucSuperAdminRegisterView.as_view()),
-    path('login', MucUserLoginView.as_view()),
-    path('getSuperAdminDetails', MucSuperAdminRegisterView.as_view(), name='get_all_superadmins'),
+    path('getSuperAdminDetails/', MucSuperAdminRegisterView.as_view(), name='get_all_superadmins'),
     path('getSuperAdminDetailsById/<int:pk>', MucSuperAdminRegisterView.as_view(), name='get_superadmin'),
     path('deleteSuperAdminDetailsById/<int:pk>', MucSuperAdminRegisterView.as_view(), name='delete_superadmin'),
     path('getsSuperAdminDetailsByEmailId', MucSuperAdminRegisterView.as_view(), name='get_superadmin_by_email_id'),

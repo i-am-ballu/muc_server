@@ -12,20 +12,25 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='MucSuperAdmin',
+            name='MucUser',
             fields=[
-                ('superadmin_id', models.AutoField(primary_key=True, serialize=False)),
+                ('user_id', models.AutoField(primary_key=True, serialize=False)),
+                ('company_id', models.IntegerField(default=0)),
                 ('first_name', models.CharField(blank=True, max_length=50, null=True)),
                 ('last_name', models.CharField(blank=True, max_length=50, null=True)),
-                ('email', models.CharField(max_length=150)),
+                ('full_name', models.CharField(blank=True, max_length=50, null=True)),
+                ('email', models.EmailField(max_length=150, unique=True)),
                 ('password', models.CharField(max_length=255)),
                 ('address', models.CharField(blank=True, max_length=250, null=True)),
                 ('mobile_number', models.CharField(blank=True, max_length=15, null=True)),
-                ('created', models.BigIntegerField(default=0)),
-                ('modified', models.BigIntegerField(default=0)),
+                ('country', models.CharField(max_length=150)),
+                ('state', models.CharField(max_length=150)),
+                ('city', models.CharField(max_length=150)),
+                ('created_on', models.BigIntegerField(default=0)),
+                ('modified_on', models.BigIntegerField(default=0)),
             ],
             options={
-                'db_table': 'superadmin',
+                'db_table': 'muc_user',
                 'managed': False,
             },
         ),

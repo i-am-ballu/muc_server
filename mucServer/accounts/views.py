@@ -3,8 +3,8 @@ from django.shortcuts import render
 # Create your views here.
 
 from rest_framework import generics
-from .models import MucUser, MucSuperAdmin
-from .serializers import MucUserSerializer, MucSuperAdminSerializer, ChangePasswordSerializer, UserRoleSerializer
+from .models import MucSuperAdmin
+from .serializers import MucSuperAdminSerializer, ChangePasswordSerializer, UserRoleSerializer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -13,91 +13,22 @@ from rest_framework.authtoken.models import Token
 from rest_framework.renderers import JSONRenderer
 from django.db import connection
 from django.conf import settings
+from django.http import JsonResponse
 import bcrypt
 
 def print_last_query():
     print("Last SQL Query: ", connection.queries)
 
-class MucUserRegisterView(generics.CreateAPIView):
-    queryset = MucUser.objects.all()
-    serializer_class = MucUserSerializer
-
-class MucUserLoginView(APIView):
-    def post(self, request):
-        try:
-            email = request.data.get('email')
-            password = request.data.get('password')
-
-            # Check if email and password are provided
-            if not email:
-                return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
-            if not password:
-                return Response({'error': 'Password is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Check if email exists in the SuperAdmin table
-            if MucSuperAdmin.objects.filter(email=email).exists():
-                superadmin = MucSuperAdmin.objects.get(email=email)
-                # Fetch or create the actual User object
-                user, created = User.objects.get_or_create(
-                    email=superadmin.email,
-                    defaults={
-                        'username': superadmin.email,
-                        'first_name': superadmin.first_name or '',
-                        'last_name': superadmin.last_name or '',
-                    }
-                )
-                token, _ = Token.objects.get_or_create(user=user)
-
-                # Check if password is correct
-                if bcrypt.checkpw(password.encode('utf-8'), superadmin.password.encode('utf-8')):
-                    data = {
-                        'message': 'Login successful',
-                        'superadmin_id': superadmin.superadmin_id,
-                        'first_name': superadmin.first_name,
-                        'last_name': superadmin.last_name,
-                        'email': superadmin.email,
-                        'isSuperadmin': True,
-                        'token': token.key,  # Return the token
-                    }
-                    return Response(data, status=status.HTTP_200_OK)
-                else:
-                    return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
-
-            # Check if email exists in the MucUser table
-            elif MucUser.objects.filter(email=email).exists():
-                muc_user = MucUser.objects.get(email=email)
-                # Fetch or create the actual User object
-                user, created = User.objects.get_or_create(
-                    email=muc_user.email,
-                    defaults={
-                        'username': muc_user.email,
-                        'first_name': muc_user.first_name or '',
-                        'last_name': muc_user.last_name or '',
-                    }
-                )
-                token, _ = Token.objects.get_or_create(user=user)
-
-                # Check if password is correct
-                if bcrypt.checkpw(password.encode('utf-8'), muc_user.password.encode('utf-8')):
-                    data = {
-                        'message': 'Login successful',
-                        'admin_id': muc_user.admin_id,
-                        'first_name': muc_user.first_name,
-                        'last_name': muc_user.last_name,
-                        'email': muc_user.email,
-                        'isSuperadmin': False,
-                        'token': token.key,  # Return the token
-                    }
-                    return Response(data, status=status.HTTP_200_OK)
-                else:
-                    return Response({'error': 'Invalid password'}, status=status.HTTP_401_UNAUTHORIZED)
-
-            # If email is not found in either table
-            else:
-                return Response({'error': 'Invalid email or password'}, status=status.HTTP_404_NOT_FOUND)
-
-        except Exception as e:
-            return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+# ✅ Common response function
+def api_response(status=True, message='', data=None, http_code=200):
+    if data is None:
+        data = {}
+    return JsonResponse({
+        "status": status,
+        "http_code": http_code,
+        "message": message,
+        "data": data
+    }, status=http_code, safe=False);
 
 class MucSuperAdminRegisterView(APIView):
     renderer_classes = [JSONRenderer]
@@ -124,7 +55,7 @@ class MucSuperAdminRegisterView(APIView):
         superadmins = MucSuperAdmin.objects.all()
         print_last_query();
         serializer = MucSuperAdminSerializer(superadmins, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return api_response(True, 'Company details fetched', {"company_list": serializer.data}, 200);
 
     def delete(self, request, pk):
         try:
