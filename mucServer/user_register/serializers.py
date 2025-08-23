@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import MucUser
 import time
+import bcrypt
 
 class MucUserSerializer(serializers.ModelSerializer):
      # Add confirmPassword & agree so they can be received but not saved
@@ -29,6 +30,10 @@ class MucUserSerializer(serializers.ModelSerializer):
         first_name = validated_data.get('first_name', '') or ''
         last_name = validated_data.get('last_name', '') or ''
         validated_data['full_name'] = f"{first_name} {last_name}".strip()
+
+        raw_password = validated_data.pop("password")
+        hashed_password = bcrypt.hashpw(raw_password.encode("utf-8"), bcrypt.gensalt())
+        validated_data["password"] = hashed_password.decode("utf-8")
 
         # Set timestamps
         now = int(time.time())

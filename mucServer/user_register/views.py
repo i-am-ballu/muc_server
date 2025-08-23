@@ -1,10 +1,14 @@
 from django.shortcuts import render
+from rest_framework.views import APIView
 from rest_framework import generics
+from accounts.models import MucSuperAdmin
 from .models import MucUser
 from .serializers import MucUserSerializer
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
+import hashlib
+import bcrypt
 
 # Create your views here.
 
@@ -19,6 +23,9 @@ def api_response(status=True, message='', data=None, http_code=200):
         "data": data
     }, status=http_code, safe=False);
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest();
+
 # POST: create a user
 class UserCreateView(generics.CreateAPIView):
     queryset = MucUser.objects.all()
@@ -26,11 +33,11 @@ class UserCreateView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if serializer.is_valid():
+            return api_response(False, "Validation error", serializer.errors, status.HTTP_400_BAD_REQUEST)
+
         self.perform_create(serializer)
-        serializer.save()
         return api_response(True, "User created successfully", serializer.data, status.HTTP_201_CREATED)
-        return api_response(False, "Validation error", serializer.errors, status.HTTP_400_BAD_REQUEST)
 
 # GET: list all users
 class UserListView(generics.ListAPIView):
@@ -75,3 +82,46 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             return api_response(False, "User not found", {}, status.HTTP_404_NOT_FOUND)
         user.delete()
         return api_response(True, "User deleted successfully", {}, status.HTTP_204_NO_CONTENT)
+
+class LoginView(APIView):
+    def post(self, request):
+        email = request.data.get("email")
+        password = request.data.get("password")
+
+        if not email or not password:
+            return api_response(False, "Email and password required", {}, status.HTTP_400_BAD_REQUEST)
+
+        # 🔹 Check in SuperAdmin table first
+        try:
+            superadmin = MucSuperAdmin.objects.get(email=email)
+            if bcrypt.checkpw(password.encode('utf-8'), superadmin.password.encode('utf-8')):
+                re_data = {
+                    "id": superadmin.superadmin_id,
+                    "first_name": superadmin.first_name,
+                    "last_name": superadmin.last_name,
+                    "email": superadmin.email,
+                    "isSuperadmin":1
+                }
+                return api_response(True, "SuperAdmin login successful", re_data, status.HTTP_200_OK)
+            else:
+                return api_response(False, "Invalid password", {}, 401)
+        except MucSuperAdmin.DoesNotExist:
+            pass  # Not found in superadmin, check muc_user
+
+        # 🔹 If not found, check in MucUser
+        try:
+            user = MucUser.objects.get(email=email)
+            if bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
+                re_data = {
+                    "id": user.user_id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "email": user.email,
+                    "isSuperadmin":0
+                }
+                return api_response(True, "User login successful", re_data, status.HTTP_200_OK)
+            else:
+                return api_response(False, "Invalid password", {}, 401)
+
+        except MucUser.DoesNotExist:
+            return api_response(False, "Invalid email or password", {}, status.HTTP_401_UNAUTHORIZED)
