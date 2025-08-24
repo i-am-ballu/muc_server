@@ -33,8 +33,20 @@ class UserCreateView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            return api_response(False, "Validation error", serializer.errors, status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+             # Extract first error message
+            errors = serializer.errors
+            # Flatten the errors (pick first error string)
+            first_error = ""
+            if isinstance(errors, dict):
+                first_field = next(iter(errors))
+                first_error = errors[first_field][0]
+            elif isinstance(errors, list):
+                first_error = errors[0]
+            else:
+                first_error = str(errors)
+
+            return api_response(False, "Validation error", {"message" : first_error}, status.HTTP_400_BAD_REQUEST)
 
         self.perform_create(serializer)
         return api_response(True, "User created successfully", serializer.data, status.HTTP_201_CREATED)
