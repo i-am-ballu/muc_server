@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'accounts',
     'user_register',
-    'locations'
+    'locations',
+    'water_logs'
 ]
 
 MIDDLEWARE = [
