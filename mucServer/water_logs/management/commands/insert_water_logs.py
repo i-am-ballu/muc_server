@@ -19,6 +19,8 @@ class Command(BaseCommand):
         start_of_day = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d 00:00:00"), "%Y-%m-%d %H:%M:%S"))) * 1000
         end_of_day = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d 23:59:59"), "%Y-%m-%d %H:%M:%S"))) * 1000
 
+        today_date = datetime.date.today().strftime("%d %b %Y")
+
         users = MucUser.objects.all()
 
         for user in users:
@@ -39,4 +41,4 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(self.style.SUCCESS(f"Inserted water log for user {user.user_id}"))
             else:
-                self.stdout.write(self.style.WARNING(f"Water log already exists for user {user.user_id}"))
+                self.stdout.write(self.style.WARNING(f"Water log already exists for {today_date} user {user.user_id}"))
