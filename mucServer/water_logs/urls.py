@@ -2,5 +2,6 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('payment-status/<int:company_id>/<int:user_id>/', views.user_payment_status),
+    path('payment-status/', views.user_payment_status),
+    path('upsert-log/', views.upsert_water_log_details)
 ]
