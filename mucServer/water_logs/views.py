@@ -112,7 +112,7 @@ def upsert_water_log_details(request):
             return api_response(False, "Invalid payload format", {}, status.HTTP_400_BAD_REQUEST)
 
         liters_per_cane = 20;
-        modified_on = int(time.time());
+        modified_on = int(time.time()* 1000);
         results = []
 
         with connection.cursor() as cursor:
