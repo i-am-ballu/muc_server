@@ -129,6 +129,7 @@ class LoginView(APIView):
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                     "email": user.email,
+                    "company_id": user.company_id,
                     "isSuperadmin":0
                 }
                 return api_response(True, "User login successful", re_data, status.HTTP_200_OK)
