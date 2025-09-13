@@ -96,12 +96,15 @@ def get_user_payment_status_method(request_data):
 
         params = [user_id, company_id]
         with connection.cursor() as cursor:
-            cursor.execute(query, params)
-            results = cursor.fetchall()
-            columns = [col[0] for col in cursor.description]
-
-        data = [dict(zip(columns, row)) for row in results]
-        return data
+            try:
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+                columns = [col[0] for col in cursor.description]
+                data = [dict(zip(columns, row)) for row in results]
+                return data;
+            except Exception as e:
+                logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
+                return [];
 
 def calculate_water_cane(liters_taken, liters_per_cane):
     safe_liters = liters_taken or 0
