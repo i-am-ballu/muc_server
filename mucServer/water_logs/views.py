@@ -227,11 +227,8 @@ def insert_user_payment(request_data):
             user_id = data[0].get("user_id", 0) if data else 0
             payment_id = data[0].get("payment_id", 0) if data else 0
             # Already paid
-            return {
-                "status": False,
-                "message": f"User has already paid for this user_id {user_id}, {payment_id}",
-                "payment_id": payment_id,
-            }
+            logger.error(f"Error#013 in water logs views.pay | User has already paid | user_id: {user_id} | payment_id: {payment_id}");
+            return {"status": False,"message": f"User has already paid for this user_id {user_id}, {payment_id}","payment_id": payment_id,}
 
         else:
 
@@ -281,7 +278,7 @@ def insert_payment_distribution(request_data):
             user_id = data[0].get("user_id", 0) if data else 0
             distribution_id = data[0].get("distribution_id", 0) if data else 0
             # Already paid
-            logger.error(f"Error#013 in water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
+            logger.error(f"Error#013 in water logs views.pay | User has already payment distribution | user_id: {user_id} | distribution_id: {distribution_id}");
             return {"status": False, "message": f"User has already payment distribution for this user_id {user_id}, {distribution_id}", "distribution_id": distribution_id}
 
         else:
