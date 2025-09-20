@@ -112,7 +112,8 @@ class LoginView(APIView):
                     "first_name": superadmin.first_name,
                     "last_name": superadmin.last_name,
                     "email": superadmin.email,
-                    "isSuperadmin":1
+                    "isSuperadmin":1,
+                    "water_department": superadmin.water_department,
                 }
                 return api_response(True, "SuperAdmin login successful", re_data, status.HTTP_200_OK)
             else:
@@ -124,13 +125,20 @@ class LoginView(APIView):
         try:
             user = MucUser.objects.get(email=email)
             if bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
+                water_department = 0;
+                try:
+                    superadmin = MucSuperAdmin.objects.get(superadmin_id=user.company_id)
+                    water_department = superadmin.water_department
+                except MucSuperAdmin.DoesNotExist:
+                    water_department = 0  # or keep None if you prefer
                 re_data = {
                     "id": user.user_id,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
                     "email": user.email,
                     "company_id": user.company_id,
-                    "isSuperadmin":0
+                    "isSuperadmin":0,
+                    "water_department":water_department,
                 }
                 return api_response(True, "User login successful", re_data, status.HTTP_200_OK)
             else:

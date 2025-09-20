@@ -118,86 +118,108 @@ def calculate_water_liters(water_cane_taken, liters_per_cane):
 def upsert_water_log_details(request):
     try:
         body = json.loads(request.body.decode("utf-8"))
-        if isinstance(body, dict):
-            body = [body]
+        company_id = body.get("company_id")
+        users_details = body.get("users_details", [])
 
-        if not isinstance(body, list):
-            logger.error(f"Error#05 in water log views.pay | Invalid payload format | company_id: {company_id} | user_id: {user_id}");
+        if isinstance(users_details, dict):
+            users_details = [users_details]
+
+        if not company_id or not isinstance(users_details, list):
+            logger.error(f"Error#05 in water log views.pay | Invalid payload format | company_id: {company_id}");
             return api_response(False, "Error#05 Invalid payload format", {}, status.HTTP_400_BAD_REQUEST);
 
-        liters_per_cane = 20;
-        modified_on = int(time.time()* 1000);
-        results = []
+        select_query = """ SELECT superadmin_id, water_department FROM `superadmin` WHERE superadmin_id = %s """
+        select_params = [company_id]
 
-        with connection.cursor() as cursor:
-            for entry in body:
-                company_id = entry.get("company_id")
-                user_id = entry.get("user_id")
-                water_id = entry.get("water_id")
-                liters = entry.get("liters")
-                water_cane = entry.get("water_cane")
+        try:
+            cursor.execute(select_query, select_params)
+            result_rows = cursor.fetchall()
+            columns = [col[0] for col in cursor.description]
+            data = [dict(zip(columns, row)) for row in result_rows]
 
-                if not company_id or not user_id or not water_id:
-                    results.append({
-                        "company_id": company_id,
-                        "user_id": user_id,
-                        "water_id": water_id,
-                        "status": "failed",
-                        "message": "Missing required fields"
-                    })
-                    continue
+            liters_per_cane = 20;
+            modified_on = int(time.time()* 1000);
+            results = []
 
-                if liters is not None:
-                    liters = float(liters)
-                    water_cane = calculate_water_cane(liters, liters_per_cane)
+            with connection.cursor() as cursor:
+                for entry in users_details:
+                    company_id = entry.get("company_id")
+                    user_id = entry.get("user_id")
+                    water_id = entry.get("water_id")
+                    liters = entry.get("liters")
+                    water_cane = entry.get("water_cane")
 
-                elif water_cane is not None:
-                    water_cane = float(water_cane)
-                    liters = calculate_water_liters(water_cane, liters_per_cane)
+                    if not company_id or not user_id or not water_id:
+                        results.append({
+                            "company_id": company_id,
+                            "user_id": user_id,
+                            "water_id": water_id,
+                            "status": "failed",
+                            "message": "Missing required fields"
+                        })
+                        continue
 
-                else:
-                    results.append({
-                        "company_id": company_id,
-                        "user_id": user_id,
-                        "water_id": water_id,
-                        "status": "failed",
-                        "message": "Either liters or water_cane must be provided"
-                    })
-                    continue
+                    if liters is not None and liters > 0:
+                        print('liters ------ ', liters)
+                        liters = float(liters)
+                        water_cane = calculate_water_cane(liters, liters_per_cane)
 
-                query = """
-                UPDATE muc_water_logs
-                SET liters = %s,
-                    water_cane = %s,
-                    modified_on = %s
-                WHERE company_id = %s
-                  AND user_id = %s
-                  AND water_id = %s
-                """
+                    elif water_cane is not None and water_cane > 0:
+                        print('water_cane ------ ', water_cane)
+                        water_cane = float(water_cane)
+                        liters = calculate_water_liters(water_cane, liters_per_cane)
 
-                params = [liters, water_cane, modified_on, company_id, user_id, water_id]
+                    else:
+                        results.append({
+                            "company_id": company_id,
+                            "user_id": user_id,
+                            "water_id": water_id,
+                            "status": "failed",
+                            "message": "Either liters or water_cane must be provided"
+                        })
+                        continue
 
-                cursor.execute(query, params)
+                    query = """
+                    UPDATE muc_water_logs
+                    SET liters = %s,
+                        water_cane = %s,
+                        modified_on = %s
+                    WHERE company_id = %s
+                      AND user_id = %s
+                      AND water_id = %s
+                    """
 
-                results.append({
-                    "company_id": company_id,
-                    "user_id": user_id,
-                    "water_id": water_id,
-                    "status": "success",
-                    "liters": liters,
-                    "water_cane": water_cane
-                })
+                    print('liter 200000000 ---------- ', liters, water_cane)
+                    params = [liters, water_cane, modified_on, company_id, user_id, water_id]
 
-        return api_response(True, "Processed all water logs", results, status.HTTP_200_OK);
+                    try:
+                        cursor.execute(query, params)
+                        results.append({
+                            "company_id": company_id,
+                            "user_id": user_id,
+                            "water_id": water_id,
+                            "status": "success",
+                            "liters": liters,
+                            "water_cane": water_cane
+                        });
+                        return api_response(True, "Processed all water logs", results, status.HTTP_200_OK);
+                    except Exception as e:
+                        logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
+                        return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
+
+        except Exception as e:
+            logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+            return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
+
 
     except DatabaseError as e:
         # Catch DB errors and return as API error
-        logger.error(f"Error#06 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        logger.error(f"Error#06 in water log views.pay. | Database error: {str(e)} | company_id: {company_id}");
         return api_response(False,f"Error#06 Database error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
 
     except Exception as e:
         # Catch any other unexpected errors
-        logger.error(f"Error#07 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        logger.error(f"Error#07 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id}");
         return api_response(False,f"Error#07 Unexpected error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
 
 def insert_user_payment(request_data):

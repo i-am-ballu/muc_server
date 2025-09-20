@@ -10,6 +10,7 @@ class MucSuperAdmin(models.Model):
     password = models.CharField(max_length=255)
     address = models.CharField(max_length=250, null=True, blank=True)
     mobile_number = models.CharField(max_length=15, null=True, blank=True)
+    water_department = models.SmallIntegerField(default=0)
     created = models.BigIntegerField(default=0)
     modified = models.BigIntegerField(default=0)
     class Meta:
