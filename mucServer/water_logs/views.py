@@ -335,7 +335,7 @@ def insert_payments(request):
         body = json.loads(request.body.decode("utf-8"))
         company_id = body.get("company_id")
         user_id = body.get("user_id")
-        payments = body.get("payments", [])
+        total_amount_paid = body.get("total_amount_paid")
 
         obj = {
             "company_id" : company_id,
@@ -351,11 +351,11 @@ def insert_payments(request):
 
         with transaction.atomic():  # ✅ Rollback all if any error
             with connection.cursor() as cursor:
-                for p in payments:
+                for p in user_payment_details:
                     water_id = p.get('water_id', 0)
-                    amount = p.get("amount", 0)
+                    paid_amount = p.get("paid_amount", 0)
                     payment_date = p.get("log_created_on")
-                    payment_status = "success" if amount > 0 else "none"
+                    payment_status = "success" if paid_amount > 0 else "none"
 
                     # 💡 You need logic to decide water_id for that date
                     # for now we fetch if exists, else 0
@@ -380,7 +380,7 @@ def insert_payments(request):
                             "company_id" : company_id,
                             "user_id" : user_id,
                             "water_id" : water_id,
-                            "amount" : amount,
+                            "amount" : total_amount_paid,
                             "payment_status" : payment_status
                         }
 
@@ -409,3 +409,103 @@ def insert_payments(request):
     except Exception as e:
         logger.error(f"Error#011 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
         return api_response(False, f"Error#011 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+
+        # api for get the required payment based on user id and company_id
+def get_superadmin_details(body):
+    company_id = body.get("company_id");
+    user_id = body.get("user_id");
+
+    if not company_id:
+        logger.error(f"Error#015 in water log views.pay. | Missing required fields | company_id: {company_id}");
+        return api_response(False, "Error#015 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
+
+    select_query = """ SELECT superadmin_id, water_department FROM `superadmin` WHERE superadmin_id = %s """
+    select_params = [company_id]
+    with connection.cursor() as cursor:
+        try:
+            cursor.execute(select_query, select_params);
+            result_rows = cursor.fetchall();
+            columns = [col[0] for col in cursor.description];
+            superadmin_data = [dict(zip(columns, row)) for row in result_rows];
+            return { "status": True, "message": "Data successfully found.", "superadmin_data": superadmin_data};
+
+        except Exception as e:
+            logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+            return { "status": False, "message": "Error#016 in water log views.pay."};
+
+def get_user_details(body):
+    company_id = body.get("company_id");
+    user_id = body.get("user_id");
+
+    if not company_id:
+        logger.error(f"Error#015 in water log views.pay. | Missing required fields | company_id: {company_id}");
+        return api_response(False, "Error#015 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
+
+    select_query = """ SELECT user_id, company_id, rate_per_cane  FROM muc_user WHERE company_id = %s AND user_id = %s"""
+    select_params = [company_id,user_id]
+    with connection.cursor() as cursor:
+        try:
+            cursor.execute(select_query, select_params);
+            result_rows = cursor.fetchall();
+            columns = [col[0] for col in cursor.description];
+            user_data = [dict(zip(columns, row)) for row in result_rows];
+            return { "status": True, "message": "Data successfully found.", "user_data": user_data};
+
+        except Exception as e:
+            logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+            return { "status": False, "message": "Error#016 in water log views.pay."};
+
+
+@api_view(["GET"])
+def get_pending_payments(request):
+    try:
+        company_id = request.query_params.get("company_id");
+        user_id = request.query_params.get("user_id");
+
+        if not company_id or not user_id:
+            logger.error(f"Error#014 in water log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#014 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
+
+        superadmin_response = get_superadmin_details({"company_id": company_id, "user_id": user_id});
+        superadmin_details = superadmin_response['superadmin_data'][0] if superadmin_response and len(superadmin_response['superadmin_data']) > 0 else {}
+        user_response = get_user_details({"company_id": company_id, "user_id": user_id});
+        user_details = user_response['user_data'][0] if user_response and len(user_response['user_data']) > 0 else {}
+        rate_per_key = 'rate_per_cane' if superadmin_details['water_department'] and superadmin_details['water_department'] == 1 else 'rate_per_liter';
+        column_key = 'water_cane' if superadmin_details['water_department'] and superadmin_details['water_department'] == 1 else 'liters';
+        value_rate_per = user_details[rate_per_key] if user_details else 20 # default value of rate_per_cane
+
+        final_query = " SELECT ";
+        final_query += " wl.water_id, wl.company_id, wl.user_id, wl.created_on, wl.liters, wl.water_cane, ";
+        final_query += f" ((COALESCE(wl.{column_key}, 0) * {value_rate_per})) AS required_amount, ";
+        final_query += " COALESCE(SUM(up.amount), 0) AS paid_amount, ";
+        final_query += f" ((COALESCE(wl.{column_key}, 0) * {value_rate_per})) - COALESCE(SUM(up.amount), 0) AS pending_amount ";
+        final_query += " FROM muc_water_logs wl ";
+        final_query += " LEFT JOIN muc_user_payment up ";
+        final_query += " ON wl.company_id = up.company_id AND wl.user_id   = up.user_id AND wl.water_id  = up.water_id ";
+        final_query += " WHERE wl.company_id = %s and wl.user_id = %s ";
+        final_query += " GROUP BY wl.water_id ";
+        final_query += " HAVING pending_amount > 0 "
+        final_query += " ORDER BY wl.created_on ";
+
+        select_params = [company_id,user_id]
+
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute(final_query, select_params);
+                result_rows = cursor.fetchall();
+                columns = [col[0] for col in cursor.description];
+                data = [dict(zip(columns, row)) for row in result_rows];
+                return api_response(True, "Data successfully found.", data, status.HTTP_200_OK);
+
+            except Exception as e:
+                logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {final_query} | Params: {select_params}");
+                return { "status": False, "message": "Error#016 in getting data water log views.pay."};
+
+    except DatabaseError as e:
+        logger.error(f"Error#12 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#012 Database error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+    except Exception as e:
+        logger.error(f"Error#013 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#013 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
