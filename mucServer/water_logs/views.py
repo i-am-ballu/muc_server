@@ -62,6 +62,7 @@ def get_user_payment_status_method(request_data):
             mu.full_name as user_name,
             mu.company_id,
             mu.user_id,
+            mu.rate_per_cane,
             mul.water_id,
             mul.liters,
             mul.water_cane,
@@ -131,17 +132,24 @@ def upsert_water_log_details(request):
         select_query = """ SELECT superadmin_id, water_department FROM `superadmin` WHERE superadmin_id = %s """
         select_params = [company_id]
 
-        try:
-            cursor.execute(select_query, select_params)
-            result_rows = cursor.fetchall()
-            columns = [col[0] for col in cursor.description]
-            data = [dict(zip(columns, row)) for row in result_rows]
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute(select_query, select_params);
+                result_rows = cursor.fetchall();
+                columns = [col[0] for col in cursor.description];
+                superadmin_data = [dict(zip(columns, row)) for row in result_rows];
 
-            liters_per_cane = 20;
-            modified_on = int(time.time()* 1000);
-            results = []
+                if not superadmin_data or not isinstance(superadmin_data, list):
+                    logger.error(f"Error#05 in water log views.pay | Invalid payload format | company_id: {company_id}");
+                    return api_response(False, "Error#05 Invalid payload format", {}, status.HTTP_400_BAD_REQUEST);
 
-            with connection.cursor() as cursor:
+                superadmin_details = superadmin_data[0] if superadmin_data and len(superadmin_data) > 0 else {}
+
+                liters_per_cane = 20;
+                modified_on = int(time.time()* 1000);
+                results = []
+
+
                 for entry in users_details:
                     company_id = entry.get("company_id")
                     user_id = entry.get("user_id")
@@ -159,13 +167,11 @@ def upsert_water_log_details(request):
                         })
                         continue
 
-                    if liters is not None and liters > 0:
-                        print('liters ------ ', liters)
+                    if liters > 0 and superadmin_details and superadmin_details.get('water_department') == 0:
                         liters = float(liters)
                         water_cane = calculate_water_cane(liters, liters_per_cane)
 
-                    elif water_cane is not None and water_cane > 0:
-                        print('water_cane ------ ', water_cane)
+                    elif water_cane > 0 and superadmin_details and superadmin_details.get('water_department') == 1:
                         water_cane = float(water_cane)
                         liters = calculate_water_liters(water_cane, liters_per_cane)
 
@@ -189,7 +195,6 @@ def upsert_water_log_details(request):
                       AND water_id = %s
                     """
 
-                    print('liter 200000000 ---------- ', liters, water_cane)
                     params = [liters, water_cane, modified_on, company_id, user_id, water_id]
 
                     try:
@@ -207,10 +212,9 @@ def upsert_water_log_details(request):
                         logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
                         return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
 
-        except Exception as e:
-            logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
-            return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
-
+            except Exception as e:
+                logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+                return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
 
     except DatabaseError as e:
         # Catch DB errors and return as API error

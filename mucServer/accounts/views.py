@@ -44,6 +44,7 @@ class MucSuperAdminRegisterView(APIView):
                     'email': superadmin.email,
                     'address': superadmin.address,
                     'mobile_number': superadmin.mobile_number,
+                    'water_department': superadmin.water_department,
                     'created': superadmin.created,
                     'modified': superadmin.modified,
                 }

@@ -14,6 +14,7 @@ class MucUser(models.Model):
     country = models.CharField(max_length=150)
     state = models.CharField(max_length=150)
     city = models.CharField(max_length=150)
+    rate_per_cane = models.IntegerField(default=0)
     created_on = models.BigIntegerField(default=0)
     modified_on = models.BigIntegerField(default=0)
     class Meta:

@@ -137,6 +137,7 @@ class LoginView(APIView):
                     "last_name": user.last_name,
                     "email": user.email,
                     "company_id": user.company_id,
+                    "rate_per_cane": user.rate_per_cane,
                     "isSuperadmin":0,
                     "water_department":water_department,
                 }
