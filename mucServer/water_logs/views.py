@@ -335,7 +335,7 @@ def insert_payments(request):
         body = json.loads(request.body.decode("utf-8"))
         company_id = body.get("company_id")
         user_id = body.get("user_id")
-        total_amount_paid = body.get("total_amount_paid")
+        total_pending_amount = body.get("total_pending_amount")
 
         obj = {
             "company_id" : company_id,
@@ -380,7 +380,7 @@ def insert_payments(request):
                             "company_id" : company_id,
                             "user_id" : user_id,
                             "water_id" : water_id,
-                            "amount" : total_amount_paid,
+                            "amount" : total_pending_amount,
                             "payment_status" : payment_status
                         }
 
@@ -516,7 +516,7 @@ def get_pending_payments(request):
                     total_result_data = [dict(zip(columns, row)) for row in total_result];
                     final_response['total_paid_amount'] = total_result_data[0]['total_paid_amount'] if total_result_data and total_result_data[0] and total_result_data[0]['total_paid_amount'] else 0;
                     final_response['total_pending_amount'] = total_result_data[0]['total_pending_amount'] if total_result_data and total_result_data[0] and total_result_data[0]['total_pending_amount'] else 0;
-                    
+
                     return api_response(True, "Data successfully found.", final_response, status.HTTP_200_OK);
                 except Exception as e:
                     logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {final_query} | Params: {select_params}");
