@@ -463,6 +463,8 @@ def get_pending_payments(request):
         company_id = request.query_params.get("company_id");
         user_id = request.query_params.get("user_id");
 
+        final_response = {};
+
         if not company_id or not user_id:
             logger.error(f"Error#014 in water log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
             return api_response(False, "Error#014 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
@@ -496,7 +498,30 @@ def get_pending_payments(request):
                 result_rows = cursor.fetchall();
                 columns = [col[0] for col in cursor.description];
                 data = [dict(zip(columns, row)) for row in result_rows];
-                return api_response(True, "Data successfully found.", data, status.HTTP_200_OK);
+                final_response['pending_pay_list'] = data;
+
+                try:
+                    select_query = " SELECT ";
+                    select_query += " SUM(COALESCE(up.amount, 0)) AS total_paid_amount, ";
+                    select_query += f" SUM(((COALESCE(wl.{column_key}, 0) * {value_rate_per})) - COALESCE(up.amount, 0)) AS total_pending_amount ";
+                    select_query += " FROM muc_water_logs wl ";
+                    select_query += " LEFT JOIN muc_user_payment up ";
+                    select_query += " ON wl.company_id = up.company_id AND wl.user_id = up.user_id AND wl.water_id = up.water_id ";
+                    select_query += " WHERE wl.company_id = %s AND wl.user_id = %s ";
+
+                    select_params = [company_id,user_id]
+                    cursor.execute(select_query, select_params);
+                    total_result = cursor.fetchall();
+                    columns = [col[0] for col in cursor.description];
+                    total_result_data = [dict(zip(columns, row)) for row in total_result];
+                    final_response['total_paid_amount'] = total_result_data[0]['total_paid_amount'] if total_result_data and total_result_data[0] and total_result_data[0]['total_paid_amount'] else 0;
+                    final_response['total_pending_amount'] = total_result_data[0]['total_pending_amount'] if total_result_data and total_result_data[0] and total_result_data[0]['total_pending_amount'] else 0;
+                    
+                    return api_response(True, "Data successfully found.", final_response, status.HTTP_200_OK);
+                except Exception as e:
+                    logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {final_query} | Params: {select_params}");
+                    return { "status": False, "message": "Error#016 in getting data water log views.pay."};
+
 
             except Exception as e:
                 logger.error(f"Error#016 water logs views.pay | SQL Error: {e} | Query: {final_query} | Params: {select_params}");
