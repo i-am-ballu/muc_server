@@ -149,7 +149,6 @@ def upsert_water_log_details(request):
                 modified_on = int(time.time()* 1000);
                 results = []
 
-
                 for entry in users_details:
                     company_id = entry.get("company_id")
                     user_id = entry.get("user_id")
@@ -207,11 +206,10 @@ def upsert_water_log_details(request):
                             "liters": liters,
                             "water_cane": water_cane
                         });
-                        return api_response(True, "Processed all water logs", results, status.HTTP_200_OK);
                     except Exception as e:
                         logger.error(f"Error#08 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
                         return { "status": False, "message": "Error#08 in water log views.pay.", "payment_id": 0};
-
+                return api_response(True, "Processed all water logs", results, status.HTTP_200_OK);
             except Exception as e:
                 logger.error(f"Error#09 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
                 return { "status": False, "message": "Error#09 in water log views.pay.", "payment_id": 0};
@@ -232,19 +230,22 @@ def insert_user_payment(request_data):
     company_id = request_data["company_id"];
     user_id = request_data["user_id"];
     water_id = request_data["water_id"];
-    amount = request_data["amount"];
+    payment_id = request_data["payment_id"];
+    pending_amount = request_data["pending_amount"];
+    required_amount = request_data["required_amount"];
+    total_paid_amount_by_user = request_data["total_paid_amount_by_user"];
     payment_status = request_data["payment_status"];
     created_on = int(time.time() * 1000)
     modified_on = created_on
 
     # 🔎 Step 1: Check if user already paid
-    select_query = """
-        SELECT *
-        FROM muc_user_payment
-        WHERE company_id = %s AND user_id = %s AND water_id = %s
-        LIMIT 1
-    """
-    select_params = [company_id, user_id, water_id]
+    where_condition = " company_id = %s AND user_id = %s AND water_id = %s ";
+    where_condition += " AND payment_id = %s " if payment_id else "";
+    select_query = " SELECT * ";
+    select_query += " FROM muc_user_payment ";
+    select_query += " WHERE " + where_condition
+    select_query += " LIMIT 1"
+    select_params = [company_id, user_id, water_id, payment_id] if payment_id else [company_id, user_id, water_id]
 
     try:
         cursor.execute(select_query, select_params)
@@ -253,19 +254,32 @@ def insert_user_payment(request_data):
         data = [dict(zip(columns, row)) for row in existing]
 
         if data:
-            user_id = data[0].get("user_id", 0) if data else 0
-            payment_id = data[0].get("payment_id", 0) if data else 0
-            # Already paid
-            logger.error(f"Error#012 in water logs views.pay | User has already paid | user_id: {user_id} | payment_id: {payment_id}");
-            return {"status": False,"message": f"User has already paid for this user_id {user_id}, {payment_id}","payment_id": payment_id,}
+            already_payment_id = data[0].get('payment_id', 0);
+            already_paid_amount = data[0].get('amount',0);
+            user_id = data[0].get("user_id", 0) if data else 0;
+            payment_id = data[0].get("payment_id", 0) if data else 0;
+
+            total_paid_amount = already_paid_amount + pending_amount;
+
+            update_query = " UPDATE muc_user_payment ";
+            update_query += " set amount = %s, modified_on = %s";
+            update_query += " where company_id = %s and payment_id = %s";
+            update_query += " and user_id = %s and water_id = %s ";
+            update_params = [total_paid_amount, modified_on, company_id, already_payment_id, user_id, water_id,]
+            print('update payment query ', update_query, update_params)
+            try:
+                cursor.execute(update_query, update_params)
+                return { "status": True, "message": "Payment inserted successfully", "payment_id": already_payment_id};
+            except Exception as e:
+                logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {update_query} | Params: {update_params}");
+                return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
 
         else:
+            query = " INSERT INTO muc_user_payment ";
+            query += " (company_id, user_id, water_id, amount, payment_status, created_on, modified_on) ";
+            query += " VALUES (%s, %s, %s, %s, %s, %s, %s)";
 
-            query = """
-                INSERT INTO muc_user_payment (company_id, user_id, water_id, amount, payment_status, created_on, modified_on)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-            params = [company_id, user_id, water_id, amount, payment_status, created_on, modified_on]
+            params = [company_id, user_id, water_id, pending_amount, payment_status, created_on, modified_on]
             try:
                 cursor.execute(query, params)
                 return { "status": True, "message": "Payment inserted successfully", "payment_id": cursor.lastrowid};
@@ -274,7 +288,7 @@ def insert_user_payment(request_data):
                 return { "status": False, "message": "Error#013 in water log views.pay.", "payment_id": 0};
 
     except Exception as e:
-        logger.error(f"Error#014 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+        logger.error(f"Error#014234 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
         return { "status": False, "message": "Error#014 in water log views.pay.", "payment_id": 0};
 
 def insert_payment_distribution(request_data):
@@ -284,7 +298,8 @@ def insert_payment_distribution(request_data):
     payment_id = request_data["payment_id"];
     water_id = request_data["water_id"];
     user_id = request_data["user_id"];
-    distributed_amount = request_data["amount"];
+    distributed_amount = request_data["pending_amount"];
+    total_paid_amount_by_user = request_data["total_paid_amount_by_user"];
     created_on = int(time.time() * 1000)
     modified_on = created_on
 
@@ -305,10 +320,23 @@ def insert_payment_distribution(request_data):
 
         if data:
             user_id = data[0].get("user_id", 0) if data else 0
-            distribution_id = data[0].get("distribution_id", 0) if data else 0
-            # Already paid
-            logger.error(f"Error#013 in water logs views.pay | User has already payment distribution | user_id: {user_id} | distribution_id: {distribution_id}");
-            return {"status": False, "message": f"User has already payment distribution for this user_id {user_id}, {distribution_id}", "distribution_id": distribution_id}
+            already_distribution_id = data[0].get("distribution_id", 0) if data else 0;
+            already_payment_id = data[0].get("payment_id",0) if data else 0;
+            already_paid_distributed_amount = data[0].get('distributed_amount',0);
+            total_paid_distributed_amount = already_paid_distributed_amount + distributed_amount;
+
+            update_query = " UPDATE muc_user_payment_distribution ";
+            update_query += " set distributed_amount = %s, modified_on = %s";
+            update_query += " where company_id = %s and distribution_id = %s and payment_id = %s";
+            update_query += " and user_id = %s and water_id = %s ";
+            update_params = [total_paid_distributed_amount, modified_on, company_id, already_distribution_id, already_payment_id, user_id, water_id]
+            print('update distribution query ', update_query, update_params)
+            try:
+                cursor.execute(update_query, update_params)
+                return { "status": True, "message": "Payment Distribution update successfully.", "payment_id": already_payment_id};
+            except Exception as e:
+                logger.error(f"Error#012 water logs views.pay | SQL Error: {e} | Query: {update_query} | Params: {update_params}");
+                return { "status": False, "message": "Error#012 in water log views.pay.", "payment_id": 0};
 
         else:
 
@@ -322,11 +350,11 @@ def insert_payment_distribution(request_data):
                 cursor.execute(query, params)
                 return { "status": True, "message": "Payment distribution successfully", "distribution_id": cursor.lastrowid};
             except Exception as e:
-                logger.error(f"Error#014 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
+                logger.error(f"Error#0141 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
                 return { "status": False, "message": "Error#012 in water log views.pay.", "distribution_id": 0};
 
     except Exception as e:
-        logger.error(f"Error#014 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+        logger.error(f"Error#0141 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
         return { "status": False, "message": "Error#012 in water log views.pay.", "distribution_id": 0};
 
 @api_view(["POST"])
@@ -354,6 +382,7 @@ def insert_payments(request):
                     for p in pending_pay_list:
                         water_id = p.get('water_id', 0);
                         user_id = p.get('user_id', 0);
+                        payment_id = p.get('payment_id',0);
                         required_amount = p.get('required_amount', 0);
                         water_cane = p.get('water_cane', 0);
                         liters = p.get('liters', 0);
@@ -363,24 +392,28 @@ def insert_payments(request):
                             pending_amount = int(pending_amount);
 
                             if(pending_amount > 0 and total_pending_amount > 0):
-                                total_pending_amount = total_pending_amount - pending_amount;
+                                pay_amount = min(total_pending_amount, pending_amount)
                                 obj = {
                                     "cursor" : cursor,
                                     "company_id" : company_id,
                                     "user_id" : user_id,
                                     "water_id" : water_id,
-                                    "amount" : pending_amount,
+                                    "payment_id" : payment_id,
+                                    "pending_amount" : pay_amount,
+                                    "required_amount" : required_amount,
+                                    "total_paid_amount_by_user" : total_pending_amount,
                                     "payment_status" : 'success',
                                 }
-                                
+
                                 payment_response = insert_user_payment(obj);
-                                obj["payment_id"] = payment_response["payment_id"];
+                                obj["payment_id"] = payment_id if obj and obj['payment_id'] else payment_response["payment_id"];
                                 if payment_response["status"]:
                                     payment_distribution_response = insert_payment_distribution(obj);
-                                    print('payment_distribution_response', payment_distribution_response);
                                     results.append(payment_distribution_response);
+                                    total_pending_amount = total_pending_amount - pay_amount;
                                 else:
                                     results.append(payment_response);
+                                    total_pending_amount = total_pending_amount - pay_amount;
 
                             else:
                                 results.append({"status": False,"message": "No Pending Amount Remaing"});
@@ -469,7 +502,7 @@ def get_user_wise_pending_payment_list(body):
         value_rate_per = user_details[rate_per_key] if user_details else 20 # default value of rate_per_cane
 
         final_query = " SELECT ";
-        final_query += " wl.water_id, wl.company_id, wl.user_id, wl.created_on, wl.liters, wl.water_cane, ";
+        final_query += " wl.water_id, wl.company_id, wl.user_id, wl.created_on, wl.liters, wl.water_cane, up.payment_id, ";
         final_query += f" ((COALESCE(wl.{column_key}, 0) * {value_rate_per})) AS required_amount, ";
         final_query += " COALESCE(SUM(up.amount), 0) AS paid_amount, ";
         final_query += f" ((COALESCE(wl.{column_key}, 0) * {value_rate_per})) - COALESCE(SUM(up.amount), 0) AS pending_amount ";
@@ -477,7 +510,7 @@ def get_user_wise_pending_payment_list(body):
         final_query += " LEFT JOIN muc_user_payment up ";
         final_query += " ON wl.company_id = up.company_id AND wl.user_id   = up.user_id AND wl.water_id  = up.water_id ";
         final_query += " WHERE wl.company_id = %s and wl.user_id = %s ";
-        final_query += " GROUP BY wl.water_id ";
+        final_query += " GROUP BY wl.water_id, up.payment_id ";
         final_query += " HAVING pending_amount > 0 "
         final_query += " ORDER BY wl.created_on ";
 
