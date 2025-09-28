@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/register/', include('user_register.urls')),
     path('api/locations/', include('locations.urls')),
     path('api/water_logs/', include('water_logs.urls')),
+    path('api/activity_stream/', include('activity_stream.urls')),
 ]

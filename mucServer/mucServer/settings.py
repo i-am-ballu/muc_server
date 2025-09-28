@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     'accounts',
     'user_register',
     'locations',
-    'water_logs'
+    'water_logs',
+    'activity_stream'
 ]
 
 MIDDLEWARE = [
