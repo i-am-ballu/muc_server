@@ -68,6 +68,8 @@ class UserListView(generics.ListAPIView):
         return api_response(True, "Users fetched successfully", serializer.data, 200)
 
 # GET/PUT/PATCH/DELETE: single user
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self, pk):

@@ -76,9 +76,11 @@ def processToGetDistributionBasedOnUserId(body):
             return { "status": False, "message": "Error#01 in activity stream log views.pay."};
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getDistributionBasedOnUserId(request):
     try:
-        company_id = request.query_params.get("company_id");
+        company_id = request.auth.payload.get("company_id")
 
         if not company_id:
             logger.error(f"Error#02 in activity stream views.py | getDistributionBasedOnUserId | Missing required fields | company_id: {company_id} ");
@@ -204,9 +206,11 @@ def getSuperAdminSupportDetailsBasedOnCompany(request):
         return api_response(False, f"Error#010 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getSuperAdminActivityStreamBasedOnCompany(request):
     try:
-        company_id = request.query_params.get("company_id");
+        company_id = request.auth.payload.get("company_id")
 
         if not company_id:
             logger.error(f"Error#011 in activity stream log views.pay. | Missing required fields | company_id: {company_id} ");
@@ -329,8 +333,8 @@ def processToGetUserMonthlyWaterTakenCountBasedOnCompany(body):
 @permission_classes([IsAuthenticated])
 def getAdminSupportDetailsBasedOnCompany(request):
     try:
-        company_id = request.query_params.get("company_id");
-        user_id = request.query_params.get("user_id");
+        company_id = request.auth.payload.get("company_id");
+        user_id = request.auth.payload.get("user_id", 0);
         start_date = request.query_params.get("start_date", 0);
         end_date = request.query_params.get("end_date", 0);
         final_response = {};
@@ -359,10 +363,12 @@ def getAdminSupportDetailsBasedOnCompany(request):
         return api_response(False, f"Error#017 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getAdminActivityStreamBasedOnCompany(request):
     try:
-        company_id = request.query_params.get("company_id");
-        user_id = request.query_params.get("user_id");
+        company_id = request.auth.payload.get("company_id");
+        user_id = request.auth.payload.get("user_id", 0);
 
         if not company_id or not user_id:
             logger.error(f"Error#011 in activity stream log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
@@ -396,15 +402,15 @@ def getAdminActivityStreamBasedOnCompany(request):
                 return api_response(True, "Data successfully found.", activity_stream_list, status.HTTP_200_OK);
 
             except Exception as e:
-                logger.error(f"Error#012 activity stream views.pay | getActivityStreamBasedOnCompany | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+                logger.error(f"Error#012 activity stream views.pay | getAdminActivityStreamBasedOnCompany | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
                 return { "status": False, "message": "Error#012 in activity stream log views.pay."};
 
     except DatabaseError as e:
-        logger.error(f"Error#013 in activity stream views.pay | getActivityStreamBasedOnCompany | Database error: {str(e)} | company_id: {company_id}");
+        logger.error(f"Error#013 in activity stream views.pay | getAdminActivityStreamBasedOnCompany | Database error: {str(e)} | company_id: {company_id}");
         return api_response(False, f"Error#013 Database error : {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
     except Exception as e:
-        logger.error(f"Error#014 in activity stream views.pay | getActivityStreamBasedOnCompany | Unexpected error: {str(e)} | company_id: {company_id}");
+        logger.error(f"Error#014 in activity stream views.pay | getAdminActivityStreamBasedOnCompany | Unexpected error: {str(e)} | company_id: {company_id}");
         return api_response(False, f"Error#014 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
 @api_view(["POST"])

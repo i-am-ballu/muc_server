@@ -122,10 +122,12 @@ def calculate_water_liters(water_cane_taken, liters_per_cane):
     return safe_water_cane_taken * liters_per_cane
 
 @api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def upsert_water_log_details(request):
     try:
         body = json.loads(request.body.decode("utf-8"))
-        company_id = body.get("company_id")
+        company_id = request.auth.payload.get("company_id");
         users_details = body.get("users_details", [])
 
         if isinstance(users_details, dict):
@@ -364,11 +366,13 @@ def insert_payment_distribution(request_data):
         return { "status": False, "message": "Error#012 in water log views.pay.", "distribution_id": 0};
 
 @api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def insert_payments(request):
     try:
         body = json.loads(request.body.decode("utf-8"))
-        company_id = body.get("company_id")
-        user_id = body.get("user_id")
+        company_id = request.auth.payload.get("company_id");
+        user_id = request.auth.payload.get("user_id");
         total_pending_amount = body.get("total_pending_amount")
 
         if not company_id or not user_id:
@@ -591,10 +595,12 @@ def get_user_wise_total_pending_amount_details(body):
         return api_response(False, f"Error#030 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_pending_payments(request):
     try:
-        company_id = request.query_params.get("company_id");
-        user_id = request.query_params.get("user_id");
+        company_id = request.auth.payload.get("company_id");
+        user_id = request.auth.payload.get("user_id");
 
         final_response = {};
 
