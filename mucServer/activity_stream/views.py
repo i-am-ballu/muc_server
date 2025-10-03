@@ -2,7 +2,9 @@ from django.shortcuts import render
 from rest_framework import status
 from django.db import connection, DatabaseError, transaction
 from django.http import JsonResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from user_register.authentication import CustomJWTAuthentication
 import water_logs.views as water_logs
 import time
 import calendar
@@ -170,9 +172,12 @@ def processToGetWaterTakenCountBasedOnCompany(body):
 
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getSuperAdminSupportDetailsBasedOnCompany(request):
     try:
-        company_id = request.query_params.get("company_id");
+        company_id = request.auth.payload.get("company_id")
+        user_id = request.auth.payload.get("user_id", 0)
         final_response = {};
 
         if not company_id:
@@ -307,8 +312,6 @@ def processToGetUserMonthlyWaterTakenCountBasedOnCompany(body):
 
     select_params = [company_id, user_id, start_ts, end_ts]
 
-    print(select_params, select_query)
-
     with connection.cursor() as cursor:
         try:
             cursor.execute(select_query, select_params);
@@ -322,6 +325,8 @@ def processToGetUserMonthlyWaterTakenCountBasedOnCompany(body):
             return { "status": False, "message": "Error#07 in activity stream views.py."};
 
 @api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getAdminSupportDetailsBasedOnCompany(request):
     try:
         company_id = request.query_params.get("company_id");
@@ -402,15 +407,19 @@ def getAdminActivityStreamBasedOnCompany(request):
         logger.error(f"Error#014 in activity stream views.pay | getActivityStreamBasedOnCompany | Unexpected error: {str(e)} | company_id: {company_id}");
         return api_response(False, f"Error#014 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
 
-@api_view(["GET"])
+@api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def getInsightsWaterPayment(request):
     try:
-        company_id = request.query_params.get("company_id");
-        is_superadmin = request.query_params.get("is_superadmin", 0);
-        is_range_between = request.query_params.get("is_range_between", 0);
-        user_id = request.query_params.get("user_id", 0);
-        start_date = request.query_params.get("start_date", 0);
-        end_date = request.query_params.get("end_date", 0);
+        body = json.loads(request.body.decode("utf-8"))
+
+        company_id = request.auth.payload.get("company_id")
+        user_id = request.auth.payload.get("user_id", 0)
+        is_superadmin = body.get("is_superadmin", 0);
+        is_range_between = body.get("is_range_between", 0);
+        start_date = body.get("start_date", 0);
+        end_date = body.get("end_date", 0);
 
         if not company_id:
             logger.error(f"Error#011 in activity stream log views.pay. | Missing required fields | company_id: {company_id}");

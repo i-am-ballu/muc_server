@@ -19,3 +19,11 @@ class MucSuperAdmin(models.Model):
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
+
+    @property
+    def id(self):
+        return self.superadmin_id
+
+    @property
+    def is_authenticated(self):
+        return True  # always True for a valid token      

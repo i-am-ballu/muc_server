@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
+from rest_framework.decorators import authentication_classes, permission_classes
 from rest_framework import generics
 from accounts.models import MucSuperAdmin
 from .models import MucUser
@@ -7,6 +8,9 @@ from .serializers import MucUserSerializer
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from user_register.authentication import CustomJWTAuthentication
 import hashlib
 import bcrypt
 
@@ -52,6 +56,8 @@ class UserCreateView(generics.CreateAPIView):
         return api_response(True, "User created successfully", serializer.data, status.HTTP_201_CREATED)
 
 # GET: list all users
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 class UserListView(generics.ListAPIView):
     queryset = MucUser.objects.all()
     serializer_class = MucUserSerializer
@@ -96,6 +102,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         return api_response(True, "User deleted successfully", {}, status.HTTP_204_NO_CONTENT)
 
 class LoginView(APIView):
+    permission_classes = [AllowAny];
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
@@ -115,6 +122,15 @@ class LoginView(APIView):
                     "isSuperadmin":1,
                     "water_department": superadmin.water_department,
                 }
+                 # 🔹 Generate JWT tokens
+                refresh = RefreshToken.for_user(superadmin);
+                refresh['user_id'] = superadmin.superadmin_id
+                refresh['company_id'] = superadmin.superadmin_id;  # add company_id to token
+                refresh['isSuperadmin'] = 1;
+
+                re_data['token'] = str(refresh.access_token);
+                re_data['refresh_token'] = str(refresh);
+
                 return api_response(True, "SuperAdmin login successful", re_data, status.HTTP_200_OK)
             else:
                 return api_response(False, "Invalid password", {}, 401)
@@ -131,6 +147,7 @@ class LoginView(APIView):
                     water_department = superadmin.water_department
                 except MucSuperAdmin.DoesNotExist:
                     water_department = 0  # or keep None if you prefer
+
                 re_data = {
                     "id": user.user_id,
                     "first_name": user.first_name,
@@ -141,6 +158,16 @@ class LoginView(APIView):
                     "isSuperadmin":0,
                     "water_department":water_department,
                 }
+
+                 # 🔹 Generate JWT tokens
+                refresh = RefreshToken.for_user(user);
+                refresh['user_id'] = user.user_id
+                refresh['company_id'] = user.company_id;  # add company_id to token
+                refresh['isSuperadmin'] = 0;
+
+                re_data['token'] = str(refresh.access_token);
+                re_data['refresh_token'] = str(refresh);
+
                 return api_response(True, "User login successful", re_data, status.HTTP_200_OK)
             else:
                 return api_response(False, "Invalid password", {}, 401)

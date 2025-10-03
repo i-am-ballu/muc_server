@@ -23,3 +23,12 @@ class MucUser(models.Model):
 
     def __str__(self):
         return self.full_name or self.email
+
+    # 🔹 Add this property
+    @property
+    def id(self):
+        return self.user_id
+
+    @property
+    def is_authenticated(self):
+        return True  # always True for a valid token       

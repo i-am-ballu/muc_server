@@ -2,7 +2,9 @@ from django.shortcuts import render
 from rest_framework import status
 from django.db import connection, DatabaseError, transaction
 from django.http import JsonResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from user_register.authentication import CustomJWTAuthentication
 import time
 import json
 import logging
@@ -21,9 +23,13 @@ def api_response(status=True, message='', data=None, http_code=200):
         "data": data
     }, status=http_code, safe=False);
 
+@api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_user_payment_status(request):
-    company_id = request.GET.get("company_id");
-    user_id = request.GET.get("user_id");
+
+    company_id = request.auth.payload.get("company_id")
+    user_id = request.query_params.get("user_id", 0);
 
     if not company_id or not user_id:
         logger.error(f"Error#01 in water log views.pay | User Not Found | company_id: {company_id} | user_id: {user_id}");
