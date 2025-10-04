@@ -35,7 +35,6 @@ class Command(BaseCommand):
                     user_id=user.user_id,
                     liters=0,
                     water_cane=0,
-                    payment_status=0,  # 0 = pending
                     created_on=now,
                     modified_on=now,
                 )

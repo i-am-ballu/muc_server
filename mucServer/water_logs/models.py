@@ -7,7 +7,6 @@ class MucWaterLogs(models.Model):
     user_id = models.IntegerField()
     liters = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     water_cane = models.IntegerField(null=True, blank=True)
-    payment_status = models.SmallIntegerField(default=0)  # 0 = pending, 1 = paid
     created_on = models.BigIntegerField(default=0)
     modified_on = models.BigIntegerField(default=0)
 

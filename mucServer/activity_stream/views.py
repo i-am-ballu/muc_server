@@ -316,6 +316,8 @@ def processToGetUserMonthlyWaterTakenCountBasedOnCompany(body):
 
     select_params = [company_id, user_id, start_ts, end_ts]
 
+    print('select_query ------ ', select_query, select_params)
+
     with connection.cursor() as cursor:
         try:
             cursor.execute(select_query, select_params);
