@@ -8,4 +8,5 @@ urlpatterns = [
     path('getAdminSupportDetailsBasedOnCompany/', views.getAdminSupportDetailsBasedOnCompany),
     path('getAdminActivityStreamBasedOnCompany/', views.getAdminActivityStreamBasedOnCompany),
     path('getInsightsWaterPayment/', views.getInsightsWaterPayment),
+    path('getYearMonthListBasedOnUserId/', views.getYearMonthListBasedOnUserId),
 ]

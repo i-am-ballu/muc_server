@@ -487,3 +487,47 @@ def getInsightsWaterPayment(request):
     except Exception as e:
         logger.error(f"Error#014 in activity stream views.pay | getInsightsWaterPayment | Unexpected error: {str(e)} | company_id: {company_id}");
         return api_response(False, f"Error#014 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@api_view(["GET"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def getYearMonthListBasedOnUserId(request):
+        try:
+            company_id = request.auth.payload.get("company_id");
+            user_id = request.query_params.get("user_id", 0);
+
+            if not company_id or not user_id:
+                logger.error(f"Error#021 in activity stream log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
+                return api_response(False, "Error#021 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
+
+            select_query = " SELECT ";
+            select_query += " YEAR(FROM_UNIXTIME(created_on / 1000)) AS year, "
+            select_query += " DATE_FORMAT(FROM_UNIXTIME(created_on / 1000), '%%Y-%%m') AS month_value, "
+            select_query += " MIN(DATE_FORMAT(FROM_UNIXTIME(created_on / 1000), '%%M %%Y')) AS month_label "
+            select_query += " FROM muc_water_logs ";
+            select_query += " WHERE company_id = %s and user_id = %s ";
+            select_query += " GROUP BY year, month_value "
+            select_query += " ORDER BY year, month_value ";
+
+            select_params = [company_id, user_id];
+
+            with connection.cursor() as cursor:
+                try:
+                    cursor.execute(select_query, select_params);
+                    result_rows = cursor.fetchall();
+                    columns = [col[0] for col in cursor.description];
+                    year_month_list = [dict(zip(columns, row)) for row in result_rows];
+                    print('year_month_list ------ ', year_month_list);
+                    return api_response(True, "Data successfully found.", year_month_list, status.HTTP_200_OK);
+
+                except Exception as e:
+                    logger.error(f"Error#022 activity stream views.pay | getYearMonthListBasedOnUserId | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
+                    return { "status": False, "message": "Error#022 in activity stream log views.pay."};
+
+        except DatabaseError as e:
+            logger.error(f"Error#023 in activity stream views.pay | getYearMonthListBasedOnUserId | Database error: {str(e)} | company_id: {company_id}");
+            return api_response(False, f"Error#023 Database error : {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+        except Exception as e:
+            logger.error(f"Error#024 in activity stream views.pay | getYearMonthListBasedOnUserId | Unexpected error: {str(e)} | company_id: {company_id}");
+            return api_response(False, f"Error#024 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);

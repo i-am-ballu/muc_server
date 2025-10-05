@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from user_register.authentication import CustomJWTAuthentication
+import activity_stream.views as activity_stream
 import time
 import json
 import logging
@@ -23,23 +24,35 @@ def api_response(status=True, message='', data=None, http_code=200):
         "data": data
     }, status=http_code, safe=False);
 
-@api_view(["GET"])
+@api_view(["POST"])
 @authentication_classes([CustomJWTAuthentication])
 @permission_classes([IsAuthenticated])
-def get_user_payment_status(request):
+def getUserPaymentStatusDetails(request):
+
+    body = json.loads(request.body.decode("utf-8"))
 
     company_id = request.auth.payload.get("company_id")
-    user_id = request.query_params.get("user_id", 0);
+    user_id = body.get("user_id", 0);
+    is_range_between = body.get("is_range_between", 0);
+    start_date = body.get("start_date", 0);
+    end_date = body.get("end_date", 0);
 
     if not company_id or not user_id:
         logger.error(f"Error#01 in water log views.pay | User Not Found | company_id: {company_id} | user_id: {user_id}");
         return api_response(False, "Error#01 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
     else:
         try:
+            start_ts = start_date if start_date else activity_stream.get_current_month_start_date(epoch_in_ms=True);
+            end_ts = end_date if end_date else activity_stream.get_current_month_end_date(epoch_in_ms=True);
+
             obj = {
                 "company_id" : company_id,
-                "user_id" : user_id
+                "user_id" : user_id,
+                "start_ts" : start_ts,
+                "end_ts" : end_ts,
+                "is_range_between" : is_range_between
             };
+
             data = get_user_payment_status_method(obj);
             return api_response(True, "Payment status fetched successfully", data, status.HTTP_201_CREATED);
         except DatabaseError as e:
@@ -56,61 +69,52 @@ def get_user_payment_status_method(request_data):
      # Case 2: query params (new style)
     company_id = request_data["company_id"]
     user_id = request_data["user_id"]
+    start_ts = request_data["start_ts"]
+    end_ts = request_data["end_ts"]
+    is_range_between = request_data["is_range_between"]
 
     if not company_id or not user_id:
         logger.error(f"Error#04 in water log views.pay | User Not Found | company_id: {company_id} | user_id: {user_id}");
         return api_response(False, "Error#04 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
     else:
-        query = """
-        SELECT
-            mu.first_name,
-            mu.last_name,
-            mu.full_name as user_name,
-            mu.company_id,
-            mu.user_id,
-            mu.rate_per_cane,
-            mul.water_id,
-            mul.liters,
-            mul.water_cane,
-            IFNULL(mup.payment_id, 0) AS payment_id,
-            IFNULL(mupd.payment_id, 0) AS distribution_id,
-            IFNULL(SUM(mupd.distributed_amount), 0) AS paid_amount,
-            CASE
-                WHEN IFNULL(SUM(mupd.distributed_amount), 0) = 0 THEN 'Not Paid'
-                WHEN IFNULL(SUM(mupd.distributed_amount), 0) < (mul.liters * 2) THEN 'Partially Paid'
-                ELSE 'Paid'
-            END AS payment_status,
-            mul.created_on as log_created_on,
-            mup.modified_on as last_payment_date,
-            mupd.created_on as distribution_created_date
-        FROM muc_user mu
-        LEFT JOIN muc_water_logs mul
-            ON mu.company_id = mul.company_id
-           AND mu.user_id = mul.user_id
-        LEFT JOIN muc_user_payment mup
-            ON mul.company_id = mup.company_id
-           AND mul.user_id = mup.user_id
-           AND mul.water_id = mup.water_id
-        LEFT JOIN muc_user_payment_distribution mupd
-            ON mup.company_id = mupd.company_id
-           AND mup.payment_id = mupd.payment_id
-           AND mul.water_id = mupd.water_id
-           AND mul.user_id = mupd.user_id
-        WHERE mu.user_id = %s
-          AND mu.company_id = %s
-        GROUP BY mul.water_id, mup.payment_id
-        """
+        select_query = " SELECT ";
+        select_query += " mu.first_name, mu.last_name, mu.full_name as user_name, mu.company_id, mu.user_id, mu.rate_per_cane, mul.water_id, mul.liters, ";
+        select_query += " mul.water_cane, IFNULL(mup.payment_id, 0) AS payment_id, IFNULL(mupd.payment_id, 0) AS distribution_id, ";
+        select_query += " IFNULL(SUM(mupd.distributed_amount), 0) AS paid_amount, "
+        select_query += " (CASE ";
+        select_query += " WHEN IFNULL(SUM(mupd.distributed_amount), 0) = 0 THEN 'Not Paid' ";
+        select_query += " WHEN IFNULL(SUM(mupd.distributed_amount), 0) < (mul.liters * 2) THEN 'Partially Paid' ";
+        select_query += " ELSE 'Paid' ";
+        select_query += " END) AS payment_status, ";
+        select_query += " mul.created_on as log_created_on,mup.modified_on as last_payment_date, mupd.created_on as distribution_created_date ";
+        select_query += " FROM muc_user mu ";
+        select_query += " LEFT JOIN muc_water_logs mul ";
+        select_query += " ON mu.company_id = mul.company_id AND mu.user_id = mul.user_id ";
+        select_query += " LEFT JOIN muc_user_payment mup ";
+        select_query += " ON mul.company_id = mup.company_id AND mul.user_id = mup.user_id AND mul.water_id = mup.water_id ";
+        select_query += " LEFT JOIN muc_user_payment_distribution mupd ";
+        select_query += " ON mup.company_id = mupd.company_id AND mup.payment_id = mupd.payment_id AND mul.water_id = mupd.water_id AND mul.user_id = mupd.user_id ";
+        select_query += " WHERE mu.user_id = %s AND mu.company_id = %s ";
 
         params = [user_id, company_id]
+
+        if is_range_between:
+            select_query += " AND mul.created_on BETWEEN %s AND %s ";
+            params.extend([start_ts, end_ts]);
+
+        select_query += " GROUP BY mul.water_id, mup.payment_id ";
+
+        print('select_query ------- ', select_query, params)
+
         with connection.cursor() as cursor:
             try:
-                cursor.execute(query, params)
+                cursor.execute(select_query, params)
                 results = cursor.fetchall()
                 columns = [col[0] for col in cursor.description]
                 data = [dict(zip(columns, row)) for row in results]
                 return data;
             except Exception as e:
-                logger.error(f"Error#05 water logs views.pay | SQL Error: {e} | Query: {query} | Params: {params}");
+                logger.error(f"Error#05 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {params}");
                 return [];
 
 def calculate_water_cane(liters_taken, liters_per_cane):
