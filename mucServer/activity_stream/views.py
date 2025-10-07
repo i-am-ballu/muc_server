@@ -443,6 +443,11 @@ def getInsightsWaterPayment(request):
         select_query = " SELECT ";
         select_query += " u.user_id,u.full_name AS user_name,wl.water_id, ";
         select_query += " wl.created_on as water_log_c_date, ";
+        select_query += " YEAR(FROM_UNIXTIME(wl.created_on / 1000)) AS year, ";
+        select_query += " DATE_FORMAT(FROM_UNIXTIME(wl.created_on / 1000), '%%Y-%%m') AS month_value, ";
+        select_query += " DATE_FORMAT(FROM_UNIXTIME(wl.created_on / 1000), '%%M %%Y') AS month_label, ";
+        select_query += " DATE_FORMAT(FROM_UNIXTIME(wl.created_on / 1000), '%%d-%%m-%%Y') AS date_value, ";
+        select_query += " DATE_FORMAT(FROM_UNIXTIME(wl.created_on / 1000), '%%D %%M %%Y') AS date_label, ";
         select_query += " up.created_on as payment_c_date, ";
         select_query += " COALESCE(wl.liters, 0) AS liters, ";
         select_query += " COALESCE(wl.water_cane, 0) AS water_cane, ";
@@ -456,6 +461,10 @@ def getInsightsWaterPayment(request):
         select_query += " ON wl.company_id = up.company_id AND wl.user_id = up.user_id AND wl.water_id = up.water_id ";
         select_query += " WHERE u.company_id = %s ";
 
+                    # select_query += " YEAR(FROM_UNIXTIME(created_on / 1000)) AS year, "
+                    # select_query += " DATE_FORMAT(FROM_UNIXTIME(created_on / 1000), '%%Y-%%m') AS month_value, "
+                    # select_query += " MIN(DATE_FORMAT(FROM_UNIXTIME(created_on / 1000), '%%M %%Y')) AS month_label "
+
         select_params = [company_id]
 
         if not is_superadmin and user_id:
@@ -467,6 +476,8 @@ def getInsightsWaterPayment(request):
             select_params.extend([start_ts, end_ts]);
 
         select_query += " ORDER BY u.user_id, wl.created_on ";
+
+        print('select_query -------- ', select_query, select_params)
 
         with connection.cursor() as cursor:
             try:
@@ -517,7 +528,6 @@ def getYearMonthListBasedOnUserId(request):
                     result_rows = cursor.fetchall();
                     columns = [col[0] for col in cursor.description];
                     year_month_list = [dict(zip(columns, row)) for row in result_rows];
-                    print('year_month_list ------ ', year_month_list);
                     return api_response(True, "Data successfully found.", year_month_list, status.HTTP_200_OK);
 
                 except Exception as e:
