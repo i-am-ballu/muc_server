@@ -5,7 +5,9 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from user_register.authentication import CustomJWTAuthentication
+from django.http import FileResponse, HttpResponseNotFound
 import activity_stream.views as activity_stream
+import water_logs.download_tasks as download_tasks
 import time
 import json
 import logging
@@ -629,3 +631,72 @@ def get_pending_payments(request):
     except Exception as e:
         logger.error(f"Error#033 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
         return api_response(False, f"Error#033 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def downloadMonthlyTemplateView(request):
+    body = json.loads(request.body.decode("utf-8"));
+
+    company_id = request.auth.payload.get("company_id");
+    user_id = body.get("user_id", 0);
+    month_name = body.get("month_name", '');
+
+
+    if not company_id or not user_id:
+        logger.error(f"Error#034 in water log views.pay | User Not Found | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, "Error#034 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
+    else:
+        if not month_name:
+            logger.error(f"Error#035 in water log views.pay | Month is required | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#035 Month is required", {}, status.HTTP_400_BAD_REQUEST);
+        else:
+            try:
+                obj = {
+                    "company_id" : company_id,
+                    "user_id" : user_id,
+                    "month_name" : month_name,
+                };
+                task = download_tasks.generate_excel_in_background(obj);
+                return api_response(True, "Month template successfully download.", task, status.HTTP_201_CREATED);
+            except DatabaseError as e:
+                # Catch DB errors and return as API error
+                logger.error(f"Error#036 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+                return api_response(False,f"Error#036 Database error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
+            except Exception as e:
+                # Catch any other unexpected errors
+                logger.error(f"Error#037 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+                return api_response(False,f"Error#037 Unexpected error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@api_view(['GET'])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def downloadFileViewEndPoint(request, filename):
+
+    company_id = request.auth.payload.get("company_id");
+    user_id = request.query_params.get("user_id", 0);
+
+    if not company_id or not user_id:
+        logger.error(f"Error#038 in water log views.pay | User Not Found | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, "Error#038 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
+    else:
+        try:
+            user_id = int(user_id)
+            obj = {
+                "company_id" : company_id,
+                "user_id" : user_id,
+                "filename" : filename,
+            }
+            file_path = download_tasks.download_file_view_end_point(obj);
+
+            if not file_path:
+                return HttpResponseNotFound("File not found")
+
+            response = FileResponse(open(file_path, 'rb'))
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+        except Exception as e:
+            # Catch any other unexpected errors
+            logger.error(f"Error#039 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False,f"Error#039 Unexpected error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
