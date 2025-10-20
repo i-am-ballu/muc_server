@@ -44,7 +44,7 @@ def create_monthly_template(body):
         downloads_root.mkdir(parents=True, exist_ok=True)
 
         # Unique filename
-        filename = f"water-template-{uuid.uuid4().hex}.xlsx"
+        filename = f"{month_name}-water-template-{uuid.uuid4().hex}.xlsx"
         full_path = downloads_root / filename
 
         # Create workbook

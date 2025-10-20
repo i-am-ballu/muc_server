@@ -8,12 +8,20 @@ from user_register.authentication import CustomJWTAuthentication
 from django.http import FileResponse, HttpResponseNotFound
 import activity_stream.views as activity_stream
 import water_logs.download_tasks as download_tasks
+import water_logs.upload_tasks as upload_tasks
 import time
 import json
 import logging
 logger = logging.getLogger(__name__)
 
 # Create your views here.
+
+ALLOWED_EXTENSIONS = ['xlsx', 'xls']
+
+
+def allowed_file(filename):
+    """Check if file has allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # ✅ Common response function
 def api_response(status=True, message='', data=None, http_code=200):
@@ -700,3 +708,37 @@ def downloadFileViewEndPoint(request, filename):
             # Catch any other unexpected errors
             logger.error(f"Error#039 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
             return api_response(False,f"Error#039 Unexpected error: {str(e)}",None,status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@api_view(['POST'])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def uploadExcelFile(request):
+    try:
+        company_id = request.auth.payload.get("company_id")
+        file = request.FILES.get("file")
+
+        print("company_id:", company_id)
+        print("FILES:", request.FILES)
+
+        if not company_id:
+            logger.error(f"Error#040 in water log views.pay | User Not Found | company_id: {company_id}");
+            return api_response(False, "Error#040 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
+        else:
+            if not file:
+                logger.error(f"Error#041 in water log views.pay | No file uploaded | company_id: {company_id}");
+                return api_response(False, "Error#041 No file uploaded", {}, status.HTTP_400_BAD_REQUEST);
+            else:
+                 if not allowed_file(file.name):
+                     logger.error(f"Error#042 in water log views.pay | Wrong extension type | company_id: {company_id}");
+                     return api_response(False, "Error#042 Wrong extension type. Allowed extension types are .xlsx and .xls.", {}, status.HTTP_400_BAD_REQUEST);
+                 else:
+                     task = upload_tasks.process_upload_excel_file(request);
+                     return api_response(True, "uploaded successfully.", task, status.HTTP_201_CREATED);
+
+    except DatabaseError as e:
+        logger.error(f"Error#032 in water log views.pay. | Database error: {str(e)} | company_id: {company_id}");
+        return api_response(False, f"Error#032 Database error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+    except Exception as e:
+        logger.error(f"Error#033 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id}");
+        return api_response(False, f"Error#033 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
