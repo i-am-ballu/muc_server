@@ -9,4 +9,5 @@ urlpatterns = [
     path('downloadMonthlyTemplate/', views.downloadMonthlyTemplateView),
     path('csv/<str:filename>', views.downloadFileViewEndPoint, name='download_file'),
     path('uploadExcelFile/', views.uploadExcelFile, name='upload_excel_file'),
+    path('importComponentWaterLogsData/', views.importComponentWaterLogsData, name='import_data'),
 ]
