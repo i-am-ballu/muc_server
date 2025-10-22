@@ -13,6 +13,7 @@ import water_logs.import_tasks as import_tasks
 import time
 import json
 import logging
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Create your views here.
@@ -114,8 +115,6 @@ def get_user_payment_status_method(request_data):
             params.extend([start_ts, end_ts]);
 
         select_query += " GROUP BY mul.water_id, mup.payment_id ";
-
-        print('select_query ------- ', select_query, params)
 
         with connection.cursor() as cursor:
             try:
@@ -289,7 +288,6 @@ def insert_user_payment(request_data):
             update_query += " where company_id = %s and payment_id = %s";
             update_query += " and user_id = %s and water_id = %s ";
             update_params = [total_paid_amount, modified_on, company_id, already_payment_id, user_id, water_id,]
-            print('update payment query ', update_query, update_params)
             try:
                 cursor.execute(update_query, update_params)
                 return { "status": True, "message": "Payment inserted successfully", "payment_id": already_payment_id};
@@ -353,7 +351,6 @@ def insert_payment_distribution(request_data):
             update_query += " where company_id = %s and distribution_id = %s and payment_id = %s";
             update_query += " and user_id = %s and water_id = %s ";
             update_params = [total_paid_distributed_amount, modified_on, company_id, already_distribution_id, already_payment_id, user_id, water_id]
-            print('update distribution query ', update_query, update_params)
             try:
                 cursor.execute(update_query, update_params)
                 return { "status": True, "message": "Payment Distribution update successfully.", "payment_id": already_payment_id};
@@ -389,6 +386,10 @@ def insert_payments(request):
         company_id = request.auth.payload.get("company_id");
         user_id = request.auth.payload.get("user_id");
         total_pending_amount = body.get("total_pending_amount")
+        month_name = body.get("month_name", '');
+        start_end_date_obj = download_tasks.get_month_start_end_bigint(month_name);
+        start_date = start_end_date_obj["start_date"] if start_end_date_obj and start_end_date_obj["start_date"] else datetime.today();
+        end_date = start_end_date_obj["end_date"] if start_end_date_obj and start_end_date_obj["end_date"] else datetime.today();
 
         if not company_id or not user_id:
             logger.error(f"Error#015 in water log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
@@ -397,8 +398,13 @@ def insert_payments(request):
         results = []
 
         with transaction.atomic():
-
-            pending_pay_list_response = get_user_wise_pending_payment_list({"company_id": company_id, "user_id": user_id});
+            obj = {
+                "company_id" : company_id,
+                "user_id" : user_id,
+                "start_date" : start_date,
+                "end_date" : end_date,
+            };
+            pending_pay_list_response = get_user_wise_pending_payment_list(obj);
             pending_pay_list = pending_pay_list_response['pending_pay_list'] if pending_pay_list_response and pending_pay_list_response['status'] and pending_pay_list_response['pending_pay_list'] and len(pending_pay_list_response['pending_pay_list']) > 0 else [];
 
             if pending_pay_list and len(pending_pay_list) > 0:
@@ -513,6 +519,8 @@ def get_user_wise_pending_payment_list(body):
     try:
         company_id = body.get('company_id');
         user_id = body.get('user_id');
+        start_date = body.get('start_date');
+        end_date = body.get('end_date');
 
         if not company_id:
             logger.error(f"Error#023 in water log views.pay. | Missing required fields | company_id: {company_id}");
@@ -526,6 +534,8 @@ def get_user_wise_pending_payment_list(body):
         column_key = 'water_cane' if superadmin_details['water_department'] and superadmin_details['water_department'] == 1 else 'liters';
         value_rate_per = user_details[rate_per_key] if user_details else 20 # default value of rate_per_cane
 
+        select_params = [company_id,user_id]
+
         final_query = " SELECT ";
         final_query += " wl.water_id, wl.company_id, wl.user_id, wl.created_on, wl.liters, wl.water_cane, up.payment_id, ";
         final_query += f" ((COALESCE(wl.{column_key}, 0) * {value_rate_per})) AS required_amount, ";
@@ -535,11 +545,14 @@ def get_user_wise_pending_payment_list(body):
         final_query += " LEFT JOIN muc_user_payment up ";
         final_query += " ON wl.company_id = up.company_id AND wl.user_id   = up.user_id AND wl.water_id  = up.water_id ";
         final_query += " WHERE wl.company_id = %s and wl.user_id = %s ";
+
+        if start_date and end_date:
+            final_query += " AND wl.created_on BETWEEN %s AND %s ";
+            select_params.extend([start_date, end_date]);
+
         final_query += " GROUP BY wl.water_id, up.payment_id ";
         final_query += " HAVING pending_amount > 0 "
         final_query += " ORDER BY wl.created_on ";
-
-        select_params = [company_id,user_id]
 
         with connection.cursor() as cursor:
             try:
@@ -565,6 +578,8 @@ def get_user_wise_total_pending_amount_details(body):
     try:
         company_id = body.get('company_id');
         user_id = body.get('user_id');
+        start_date = body.get('start_date');
+        end_date = body.get('end_date');
 
         if not company_id:
             logger.error(f"Error#027 in water log views.pay. | Missing required fields | company_id: {company_id}");
@@ -587,6 +602,10 @@ def get_user_wise_total_pending_amount_details(body):
         select_query += " WHERE wl.company_id = %s AND wl.user_id = %s ";
 
         select_params = [company_id,user_id]
+
+        if start_date and end_date:
+            select_query += " AND wl.created_on BETWEEN %s AND %s ";
+            select_params.extend([start_date, end_date]);
 
         with connection.cursor() as cursor:
             try:
@@ -616,6 +635,10 @@ def get_pending_payments(request):
     try:
         company_id = request.auth.payload.get("company_id");
         user_id = request.auth.payload.get("user_id");
+        month_name = request.query_params.get("month_name", '');
+        start_end_date_obj = download_tasks.get_month_start_end_bigint(month_name);
+        start_date = start_end_date_obj["start_date"] if start_end_date_obj and start_end_date_obj["start_date"] else datetime.today();
+        end_date = start_end_date_obj["end_date"] if start_end_date_obj and start_end_date_obj["end_date"] else datetime.today();
 
         final_response = {};
 
@@ -623,10 +646,16 @@ def get_pending_payments(request):
             logger.error(f"Error#031 in water log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
             return api_response(False, "Error#031 Missing required fields", {}, status.HTTP_400_BAD_REQUEST);
 
-        pending_pay_list_response = get_user_wise_pending_payment_list({"company_id": company_id, "user_id": user_id});
+        obj = {
+            "company_id" : company_id,
+            "user_id" : user_id,
+            "start_date" : start_date,
+            "end_date" : end_date,
+        };
+        pending_pay_list_response = get_user_wise_pending_payment_list(obj);
         final_response['pending_pay_list'] = pending_pay_list_response['pending_pay_list'] if pending_pay_list_response and pending_pay_list_response['status'] and pending_pay_list_response['pending_pay_list'] and len(pending_pay_list_response['pending_pay_list']) > 0 else [];
 
-        total_result_data_response = get_user_wise_total_pending_amount_details({"company_id": company_id, "user_id": user_id});
+        total_result_data_response = get_user_wise_total_pending_amount_details(obj);
         total_result_data = total_result_data_response['total_result_data'][0] if total_result_data_response and total_result_data_response['status'] and total_result_data_response['total_result_data'] and len(total_result_data_response['total_result_data']) > 0 else {};
         final_response['total_paid_amount'] = total_result_data['total_paid_amount'] if total_result_data and total_result_data['total_paid_amount'] else 0;
         final_response['total_pending_amount'] = total_result_data['total_pending_amount'] if total_result_data and total_result_data['total_pending_amount'] else 0;
@@ -718,9 +747,6 @@ def uploadExcelFile(request):
         company_id = request.auth.payload.get("company_id")
         file = request.FILES.get("file")
 
-        print("company_id:", company_id)
-        print("FILES:", request.FILES)
-
         if not company_id:
             logger.error(f"Error#040 in water log views.pay | User Not Found | company_id: {company_id}");
             return api_response(False, "Error#040 User Not Found", {}, status.HTTP_400_BAD_REQUEST);
@@ -763,7 +789,6 @@ def importComponentWaterLogsData(request):
                  return api_response(False, "Error#042 Wrong extension type. Allowed extension types are .xlsx and .xls.", {}, status.HTTP_400_BAD_REQUEST);
              else:
                  import_res = import_tasks.process_import_component_water_logs_data(request);
-                 print('come here ------ ', import_res);
                  return import_res;
 
     except DatabaseError as e:
