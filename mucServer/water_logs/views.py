@@ -10,6 +10,11 @@ import activity_stream.views as activity_stream
 import water_logs.download_tasks as download_tasks
 import water_logs.upload_tasks as upload_tasks
 import water_logs.import_tasks as import_tasks
+from .razorpay_utils import (
+    create_razorpay_order,
+    verify_razorpay_signature,
+    fetch_payment_details
+)
 import time
 import json
 import logging
@@ -257,6 +262,14 @@ def insert_user_payment(request_data):
     required_amount = request_data["required_amount"];
     total_paid_amount_by_user = request_data["total_paid_amount_by_user"];
     payment_status = request_data["payment_status"];
+
+    # Razorpay fields
+    razorpay_order_id = request_data.get("razorpay_order_id")
+    razorpay_payment_id = request_data.get("razorpay_payment_id")
+    razorpay_signature = request_data.get("razorpay_signature")
+    transaction_id = request_data.get("transaction_id")
+    payment_method = request_data.get("payment_method", "razorpay")
+
     created_on = int(time.time() * 1000)
     modified_on = created_on
 
@@ -284,10 +297,14 @@ def insert_user_payment(request_data):
             total_paid_amount = already_paid_amount + pending_amount;
 
             update_query = " UPDATE muc_user_payment ";
-            update_query += " set amount = %s, modified_on = %s";
+            update_query += " set amount = %s, ";
+            update_query += " razorpay_order_id = %s, razorpay_payment_id = %s, razorpay_signature = %s, "
+            update_query += " transaction_id = %s, payment_method = %s, "
+            update_query += " modified_on = %s ";
             update_query += " where company_id = %s and payment_id = %s";
             update_query += " and user_id = %s and water_id = %s ";
-            update_params = [total_paid_amount, modified_on, company_id, already_payment_id, user_id, water_id,]
+            update_params = [total_paid_amount, razorpay_order_id, razorpay_payment_id, razorpay_signature,
+                    transaction_id, payment_method, modified_on, company_id, already_payment_id, user_id, water_id,]
             try:
                 cursor.execute(update_query, update_params)
                 return { "status": True, "message": "Payment inserted successfully", "payment_id": already_payment_id};
@@ -297,10 +314,14 @@ def insert_user_payment(request_data):
 
         else:
             query = " INSERT INTO muc_user_payment ";
-            query += " (company_id, user_id, water_id, amount, payment_status, created_on, modified_on) ";
-            query += " VALUES (%s, %s, %s, %s, %s, %s, %s)";
+            query += " (company_id, user_id, water_id, amount, payment_status, ";
+            query += " razorpay_order_id, razorpay_payment_id, razorpay_signature, ";
+            query += " transaction_id, payment_method, ";
+            query += " created_on, modified_on) ";
+            query += " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)";
 
-            params = [company_id, user_id, water_id, pending_amount, payment_status, created_on, modified_on]
+            params = [company_id, user_id, water_id, pending_amount, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature,
+                transaction_id, payment_method, created_on, modified_on]
             try:
                 cursor.execute(query, params)
                 return { "status": True, "message": "Payment inserted successfully", "payment_id": cursor.lastrowid};
@@ -376,6 +397,282 @@ def insert_payment_distribution(request_data):
     except Exception as e:
         logger.error(f"Error#0141 water logs views.pay | SQL Error: {e} | Query: {select_query} | Params: {select_params}");
         return { "status": False, "message": "Error#012 in water log views.pay.", "distribution_id": 0};
+
+@api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def create_payment_order(request):
+    """
+    Create Razorpay order before payment
+    This is called BEFORE user makes payment
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        company_id = request.auth.payload.get("company_id")
+        user_id = request.auth.payload.get("user_id")
+        total_pending_amount = body.get("total_pending_amount")
+        month_name = body.get("month_name", '')
+
+        if not company_id or not user_id or not total_pending_amount:
+            logger.error(f"Error#030 Missing required fields | company_id: {company_id} | user_id: {user_id}")
+            return api_response(False, "Error#030 Missing required fields", {}, status.HTTP_400_BAD_REQUEST)
+
+        # Get pending payment list
+        start_end_date_obj = download_tasks.get_month_start_end_bigint(month_name)
+        start_date = start_end_date_obj.get("start_date", datetime.today())
+        end_date = start_end_date_obj.get("end_date", datetime.today())
+
+        obj = {
+            "company_id": company_id,
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+
+        pending_pay_list_response = get_user_wise_pending_payment_list(obj)
+        pending_pay_list = pending_pay_list_response.get('pending_pay_list', [])
+
+        if not pending_pay_list:
+            logger.error(f"Error#031 No pending payments | company_id: {company_id} | user_id: {user_id}")
+            return api_response(False, "Error#031 No pending payments found", {}, status.HTTP_400_BAD_REQUEST)
+
+        # Extract water_ids
+        water_ids = [p.get('water_id') for p in pending_pay_list if p.get('water_id')]
+
+        # Create Razorpay order
+        order_response = create_razorpay_order(
+            amount = total_pending_amount,
+            user_id = user_id,
+            company_id = company_id,
+            water_ids = water_ids,
+            notes = {'month_name': month_name}
+        )
+
+        if not order_response.get('success'):
+            logger.error(f"Error#032 Razorpay order creation failed | Error: {order_response.get('error')}")
+            return api_response(False, "Error#032 Failed to create payment order", {}, status.HTTP_400_BAD_REQUEST)
+
+        # Return order details to frontend
+        return api_response(True, "Order created successfully", {
+            'order_id': order_response['order_id'],
+            'amount': order_response['amount'],
+            'currency': order_response['currency'],
+            'key_id': order_response['key_id'],
+            'water_ids': water_ids,
+            'pending_payments': pending_pay_list
+        }, status.HTTP_200_OK)
+
+    except DatabaseError as e:
+        logger.error(f"Error#10 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#010 Database error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+    except Exception as e:
+        logger.error(f"Error#033 in create_payment_order | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#033 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@api_view(["POST"])
+@authentication_classes([CustomJWTAuthentication])
+@permission_classes([IsAuthenticated])
+def verify_and_process_payment(request):
+    """
+    Verify Razorpay payment signature and process payment distribution
+    This is called AFTER user completes payment
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        company_id = request.auth.payload.get("company_id")
+        user_id = request.auth.payload.get("user_id")
+
+        razorpay_order_id = body.get("razorpay_order_id")
+        razorpay_payment_id = body.get("razorpay_payment_id")
+        razorpay_signature = body.get("razorpay_signature")
+        total_pending_amount = body.get("total_pending_amount")
+        month_name = body.get("month_name", '')
+
+        if not all([company_id, user_id, razorpay_order_id, razorpay_payment_id, razorpay_signature]):
+            logger.error(f"Error#015 in water log views.pay. | Missing required fields | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#040 Missing required fields", {}, status.HTTP_400_BAD_REQUEST)
+
+        # Step 1: Verify payment signature
+        is_valid = verify_razorpay_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+
+        if not is_valid:
+            logger.error(f"Error#041 in water log views.pay. | Payment Verification failed | company_id: {company_id} | user_id: {user_id} | order_id: {razorpay_order_id}")
+            return api_response(False, "Error#041 Payment verification failed", {}, status.HTTP_400_BAD_REQUEST)
+
+        # Step 2: Fetch payment details from Razorpay
+        payment_details_response = fetch_payment_details(razorpay_payment_id)
+
+        if not payment_details_response.get('success'):
+            logger.error(f"Error#041 in water log views.pay. | Failed to fetch payment details | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#042 Failed to fetch payment details", {}, status.HTTP_400_BAD_REQUEST)
+
+        payment_details = payment_details_response['payment']
+        payment_method = payment_details.get('method', 'razorpay')  # upi, card, netbanking, etc.
+
+        # Step 3: Get pending payment list
+        start_end_date_obj = download_tasks.get_month_start_end_bigint(month_name)
+        start_date = start_end_date_obj.get("start_date", datetime.today())
+        end_date = start_end_date_obj.get("end_date", datetime.today())
+
+        obj = {
+            "company_id": company_id,
+            "user_id": user_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+
+        pending_pay_list_response = get_user_wise_pending_payment_list(obj)
+        pending_pay_list = pending_pay_list_response.get('pending_pay_list', [])
+
+        if not pending_pay_list:
+            logger.error(f"Error#016 in water log views.pay. | Pending payment list not found. | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#016 Pending payment list not found.", {}, status.HTTP_400_BAD_REQUEST);
+
+        # Step 4: Process payments with transaction
+        results = []
+
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                remaining_amount = total_pending_amount
+
+                for p in pending_pay_list:
+                    water_id = p.get('water_id', 0)
+                    user_id = p.get('user_id', 0)
+                    payment_id = p.get('payment_id', 0)
+                    required_amount = p.get('required_amount', 0)
+                    water_cane = p.get('water_cane', 0)
+                    liters = p.get('liters', 0)
+
+                    if water_id and required_amount > 0 and (liters or water_cane):
+                        pending_amount = int(p.get('pending_amount', 0))
+
+                        if pending_amount > 0 and remaining_amount > 0:
+                            pay_amount = min(remaining_amount, pending_amount)
+
+                            obj = {
+                                "cursor": cursor,
+                                "company_id": company_id,
+                                "user_id": user_id,
+                                "water_id": water_id,
+                                "payment_id": payment_id,
+                                "pending_amount": pay_amount,
+                                "required_amount": required_amount,
+                                "total_paid_amount_by_user": total_pending_amount,
+                                "payment_status": 'captured',  # Razorpay successful payment status
+                                # Razorpay fields
+                                "razorpay_order_id": razorpay_order_id,
+                                "razorpay_payment_id": razorpay_payment_id,
+                                "razorpay_signature": razorpay_signature,
+                                "transaction_id": razorpay_payment_id,
+                                "payment_method": payment_method,
+                            }
+
+                            payment_response = insert_user_payment(obj)
+
+                            if payment_response["status"]:
+                                obj["payment_id"] = payment_response["payment_id"]
+                                payment_distribution_response = insert_payment_distribution(obj)
+                                results.append(payment_distribution_response)
+                                remaining_amount -= pay_amount
+                            else:
+                                results.append(payment_response)
+                                remaining_amount -= pay_amount
+                        else:
+                            results.append({"status": False, "message": "No Pending Amount Remaining"})
+                    else:
+                        results.append({"status": False, "message": "No record found", "payment_id": None})
+
+        # Decide final response
+        if any(r["status"] for r in results):
+            return api_response(True, "Payment verified and processed successfully", {
+                'results': results,
+                'razorpay_payment_id': razorpay_payment_id,
+                'payment_method': payment_method
+            }, status.HTTP_200_OK)
+        else:
+            logger.error(f"Error#017 in water log views.pay. | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#017 " + results[0]["message"], results, status.HTTP_400_BAD_REQUEST);
+
+    except DatabaseError as e:
+        logger.error(f"Error#10 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#010 Database error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+    except Exception as e:
+        logger.error(f"Error#018 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#018 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def razorpay_webhook(request):
+    """
+    Handle Razorpay webhook events
+    Configure this URL in Razorpay Dashboard
+    """
+    try:
+        import hmac
+        import hashlib
+        from django.conf import settings
+
+        webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
+        webhook_signature = request.headers.get('X-Razorpay-Signature')
+
+        # Verify webhook signature
+        expected_signature = hmac.new(
+            webhook_secret.encode('utf-8'),
+            request.body,
+            hashlib.sha256
+        ).hexdigest()
+
+        if webhook_signature != expected_signature:
+            logger.error(f"Error#016 in water log views.pay. | Webhook signature verification failed. | company_id: {company_id} | user_id: {user_id}");
+            return api_response(False, "Error#016 Pending payment list not found.", {}, status.HTTP_400_BAD_REQUEST);
+
+        # Parse webhook data
+        data = json.loads(request.body)
+        event = data.get('event')
+        payload = data.get('payload', {}).get('payment', {}).get('entity', {})
+
+        order_id = payload.get('order_id')
+        payment_id = payload.get('id')
+
+        # Handle different events
+        if event == 'payment.captured':
+            # Update payment status to captured
+            with connection.cursor() as cursor:
+                update_query = """
+                    UPDATE muc_user_payment
+                    SET payment_status = 'captured', razorpay_payment_id = %s
+                    WHERE razorpay_order_id = %s
+                """
+                cursor.execute(update_query, [payment_id, order_id])
+
+            logger.info(f"Payment captured via webhook | order_id: {order_id} | payment_id: {payment_id}");
+
+        elif event == 'payment.failed':
+            # Update payment status to failed
+            with connection.cursor() as cursor:
+                update_query = """
+                    UPDATE muc_user_payment
+                    SET payment_status = 'failed'
+                    WHERE razorpay_order_id = %s
+                """
+                cursor.execute(update_query, [order_id])
+
+            logger.warning(f"Payment failed via webhook | order_id: {order_id}");
+
+        # return JsonResponse({'success': True})
+        return api_response(True, "All Good.", {}, status.HTTP_200_OK);
+
+    except DatabaseError as e:
+        logger.error(f"Error#10 in water log views.pay. | Database error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#010 Database error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+    except Exception as e:
+        logger.error(f"Error#018 in water log views.pay. | Unexpected error: {str(e)} | company_id: {company_id} | user_id: {user_id}");
+        return api_response(False, f"Error#018 Unexpected error: {str(e)}", None, status.HTTP_500_INTERNAL_SERVER_ERROR);
+
+
 
 @api_view(["POST"])
 @authentication_classes([CustomJWTAuthentication])
